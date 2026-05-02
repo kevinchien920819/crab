@@ -1,0 +1,24 @@
+[project]
+name = "crab"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "torch==2.8.0",
+    "transformers<5",
+    "torchaudio==2.8.0",
+    "einops",
+    "numpy",
+    "pandas",
+    "polars",
+    "tqdm",
+    "PyYAML",
+    "python-dotenv",
+    "click",
+    "matplotlib",
+    "plotly",
+    "wandb",
+    "line-bot-sdk",
+    "isort",
+]

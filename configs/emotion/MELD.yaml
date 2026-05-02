@@ -1,0 +1,73 @@
+general:
+  device: cuda
+  device_id: '0'
+  work_dir: default
+  seed: 39
+  deterministic: true
+  freeze: []
+  unfreeze: []
+  ckpt:
+    path: ''
+    modules:
+      from:
+      - all
+      to:
+      - all
+  testing_ckpt: default
+  train: True
+  eval: True
+
+model:
+  name: EmotionBaselineModel
+  tag: v3
+  description: ''
+  ssl_model_str: WAVLM_LARGE
+  text_model_str: ROBERTA_BASE_ENCODER
+  num_classes: 7
+  lr: 1e-6
+  d_model: 512
+  dropout: 0.5
+
+solver:
+  optimizer: AdamW
+  scheduler: div
+  max_epochs: 1
+  freeze_epochs: 0
+  lr:
+  - 1e-5
+  iters_to_accumulate: 8
+  amp_dtype: fp16
+  criterions:
+    # ce_loss:
+    #   name: CrossEntropyLoss
+    #   label_smoothing: 0.1
+    #   total_weight: 1.0
+    wce_loss:
+      name: WeightedCrossEntropyLoss
+      weight: 0 #0 means default
+      label_smoothing: 0.1
+      total_weight: 1.0
+datasets:
+  train_datasets:
+  - name: MELD
+    dir: /home/icebird/01_proj/crab/dataset
+  test_datasets:
+  - name: MELD
+    dir: /home/icebird/01_proj/crab/dataset
+
+dataloader:
+  name: BalancedLengthSampler
+  num_workers: 20
+  text_max_len: 128
+  # token_batch_size: 80000
+  batch_size:
+    train: 4
+    dev: 4
+    eval: 1
+linebot:
+  enable: false
+
+wandb:
+  enable: false
+  entity: fcu-slp
+  project: crab
