@@ -32,6 +32,7 @@ WORD_PHONE_SEPARATOR = " | "
 SYLLABLE_SEPARATOR = " - "
 PHONE_SEPARATOR = " "
 PHONE_ASSIGNMENT_TOLERANCE = 0.02
+DEFAULT_MANUAL_LEXICON_PATH = Path(__file__).resolve().parents[1] / "data" / "cmudict.rep"
 
 OUTPUT_FILES: dict[SplitName, str] = {
     "train": "ASVspoof5_train_syllabification.csv",
@@ -624,7 +625,7 @@ def syllabify_asvspoof5(
     output_dir: str | Path,
     splits: tuple[SplitName, ...] = SPLITS,
     bartlett_lexicon_path: str | Path | None = None,
-    manual_lexicon_path: str | Path | None = None,
+    manual_lexicon_path: str | Path | None = DEFAULT_MANUAL_LEXICON_PATH,
     limit: int | None = None,
 ) -> dict[SplitName, list[dict[str, object]]]:
     root_path = Path(data_root)
@@ -704,8 +705,8 @@ def main() -> None:
     parser.add_argument(
         "--manual_lexicon",
         type=Path,
-        default=None,
-        help="Optional hand-syllabified lexicon path in CSV, TSV, or CMUDict-like text format.",
+        default=DEFAULT_MANUAL_LEXICON_PATH,
+        help="Hand-syllabified lexicon path in CSV, TSV, or CMUDict-like text format.",
     )
     parser.add_argument(
         "--limit",
