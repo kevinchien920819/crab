@@ -32,7 +32,7 @@ WORD_PHONE_SEPARATOR = " | "
 SYLLABLE_SEPARATOR = " - "
 PHONE_SEPARATOR = " "
 PHONE_ASSIGNMENT_TOLERANCE = 0.02
-DEFAULT_MANUAL_LEXICON_PATH = Path(__file__).resolve().parents[1] / "data" / "cmudict.rep"
+DEFAULT_MANUAL_LEXICON_PATH = Path(__file__).resolve().parents[1] / "dictionary" / "cmudict.rep"
 
 OUTPUT_FILES: dict[SplitName, str] = {
     "train": "ASVspoof5_train_syllabification.csv",
