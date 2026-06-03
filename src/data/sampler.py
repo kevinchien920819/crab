@@ -1,5 +1,6 @@
 import math
 import random
+from collections import defaultdict
 
 from torch.utils.data import Sampler
 
@@ -113,6 +114,152 @@ class BalancedLengthSampler(Sampler[list[int]]):
             return n // self.batch_size
         else:
             return (n + self.batch_size - 1) // self.batch_size
+
+
+class SmoothedClassBatchSampler(Sampler[list[int]]):
+    """
+    Smooth the original class distribution and draw fixed-size mini-batches.
+
+    Samples are drawn without replacement within one pass. The pools are rebuilt
+    the next time __iter__ is called, which matches the usual epoch reset.
+    """
+
+    def __init__(
+        self,
+        labels: list[int],
+        batch_size: int = 500,
+        smoothing_power: float = 0.5,
+        shuffle: bool = True,
+        drop_last: bool = False,
+        seed: int | None = None,
+    ):
+        """
+        Initialize a class-balanced batch sampler.
+
+        smoothing_power controls how much the class distribution is flattened:
+        1.0 keeps the original distribution, 0.0 makes classes uniform.
+        """
+        if batch_size <= 0:
+            raise ValueError("batch_size must be > 0")
+        if not 0.0 <= smoothing_power <= 1.0:
+            raise ValueError("smoothing_power must be between 0.0 and 1.0")
+        if not labels:
+            raise ValueError("labels must not be empty")
+
+        self.labels = labels
+        self.batch_size = batch_size
+        self.smoothing_power = smoothing_power
+        self.shuffle = shuffle
+        self.drop_last = drop_last
+        self.seed = seed
+        self.rng = random.Random(self.seed)
+
+        self.class_to_indices = self._build_class_to_indices()
+        self.classes = sorted(self.class_to_indices)
+        self.class_probs = self._build_smoothed_probs()
+
+    def _build_class_to_indices(self) -> dict[int, list[int]]:
+        class_to_indices = defaultdict(list)
+        for idx, label in enumerate(self.labels):
+            if label is None:
+                raise ValueError(f"labels[{idx}] is None")
+            class_to_indices[label].append(idx)
+        return dict(class_to_indices)
+
+    def _build_smoothed_probs(self) -> dict[int, float]:
+        counts = {
+            label: len(indices)
+            for label, indices in self.class_to_indices.items()
+        }
+        weights = {
+            label: count ** self.smoothing_power
+            for label, count in counts.items()
+        }
+        total_weight = sum(weights.values())
+        return {
+            label: weight / total_weight
+            for label, weight in weights.items()
+        }
+
+    def _batch_quotas(self, batch_size: int, pools: dict[int, list[int]]) -> dict[int, int]:
+        available_classes = [label for label in self.classes if pools[label]]
+        if not available_classes:
+            return {}
+
+        total_prob = sum(self.class_probs[label] for label in available_classes)
+        raw_quotas = {
+            label: batch_size * self.class_probs[label] / total_prob
+            for label in available_classes
+        }
+        quotas = {
+            label: min(math.floor(raw_quota), len(pools[label]))
+            for label, raw_quota in raw_quotas.items()
+        }
+
+        remaining = batch_size - sum(quotas.values())
+        if remaining <= 0:
+            return quotas
+
+        # Prefer classes whose quota had the largest fractional remainder, then
+        # keep cycling through classes with remaining samples until the batch is full.
+        fill_order = sorted(
+            available_classes,
+            key=lambda label: raw_quotas[label] - math.floor(raw_quotas[label]),
+            reverse=True,
+        )
+        while remaining > 0:
+            filled = False
+            for label in fill_order:
+                if quotas[label] >= len(pools[label]):
+                    continue
+                quotas[label] += 1
+                remaining -= 1
+                filled = True
+                if remaining == 0:
+                    break
+            if not filled:
+                break
+
+        return quotas
+
+    def __iter__(self):
+        """Yield smoothed-distribution batches without replacement."""
+        pools = {
+            label: indices.copy()
+            for label, indices in self.class_to_indices.items()
+        }
+        if self.shuffle:
+            for indices in pools.values():
+                self.rng.shuffle(indices)
+
+        remaining_samples = len(self.labels)
+        while remaining_samples > 0:
+            current_batch_size = min(self.batch_size, remaining_samples)
+            if self.drop_last and current_batch_size < self.batch_size:
+                break
+
+            quotas = self._batch_quotas(current_batch_size, pools)
+            batch = []
+            for label in self.classes:
+                quota = quotas.get(label, 0)
+                if quota <= 0:
+                    continue
+                batch.extend(pools[label][-quota:])
+                del pools[label][-quota:]
+
+            if self.shuffle:
+                self.rng.shuffle(batch)
+            if batch:
+                remaining_samples -= len(batch)
+                yield batch
+            else:
+                break
+
+    def __len__(self):
+        """Return the number of fixed-size class-smoothed batches."""
+        if self.drop_last:
+            return len(self.labels) // self.batch_size
+        return math.ceil(len(self.labels) / self.batch_size)
 
 
 class PaddingBatchSampler(Sampler[list[int]]):
