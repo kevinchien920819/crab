@@ -47,6 +47,10 @@ solver:
       weight: 0 #0 means default
       label_smoothing: 0.1
       total_weight: 1.0
+    mpcl_loss:
+      name: mpcl_loss
+      temperature: 0.1
+      total_weight: 1.0
 datasets:
   train_datasets:
   - name: MELD

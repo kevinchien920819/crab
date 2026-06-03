@@ -22,7 +22,8 @@ class Tester(Controller):
             dataset_name: str,
             eval_split: str = 'test',
         ):
-        
+
+        """Initialize an evaluation controller for one dataset split."""
         super(Tester, self).__init__(
             logger,
             cfg,
@@ -34,16 +35,17 @@ class Tester(Controller):
         self.wandb_run = wandb_run
         self.wandb_log = {}
         self.eval_split = eval_split
-    
-    
+
+
     def run(self) -> tuple[dict, float]:
+        """Evaluate the configured dataloader and return dataset-appropriate metrics."""
         test_dataloader = self.dataloaders[0]
         log_prefix = self.eval_split or 'test'
-        
+
         test_true, test_pred, test_loss, test_loss_list = self.do_epoch(test_dataloader, backward=False)
         self.logger.info(f'[Tester:{log_prefix}] Test Loss components: ' + ', '.join([f'loss_{i}: {test_loss_list[i]:.4f}' for i in range(len(test_loss_list))]))
         self.logger.info(f'[Tester:{log_prefix}] Testing loss: {test_loss:.4f}')
-        
+
         if self.dataset_name in ['MELD', 'IEMOCAP', 'MSP_Podcast']:
             test_war = self.cal_war(test_true, test_pred)
             test_uar = self.cal_uar(test_true, test_pred)
@@ -51,12 +53,12 @@ class Tester(Controller):
         else:
             test_eer = self.cal_eer(test_true, test_pred)
             self.logger.info(f'[Tester:{log_prefix}] Testing EER: {test_eer:.4f}')
-        
-        
+
+
         if self.cfg.wandb.enable:
             self.wandb_log.update({f'{log_prefix}_loss': test_loss})
             self.wandb_log.update({f'{log_prefix}_loss_components_{i}': test_loss_list[i] for i in range(len(test_loss_list))})
-            
+
             if self.dataset_name  in ['MELD', 'IEMOCAP', 'MSP_Podcast']:
                 self.wandb_log.update({f'{log_prefix}_war': test_war, f'{log_prefix}_uar': test_uar})
             else:
@@ -66,9 +68,9 @@ class Tester(Controller):
             return test_eer, test_loss
         if self.dataset_name in ['MELD', 'IEMOCAP', 'MSP_Podcast']:
             return test_war, test_uar, test_loss
-    
-    
-    # TODO get min-tDCF 
+
+
+    # TODO get min-tDCF
     def _calculate_minDCF_EER_CLLR_actDCF(
             self,
             cm_scores_file,
@@ -79,6 +81,7 @@ class Tester(Controller):
         # Primary metrics: min DCF,
         # Secondary metrics: EER, CLLR
 
+        """Calculate ASVspoof CM metrics from an evaluation score file."""
         Pspoof = 0.05
         dcf_cost_model = {
             'Pspoof': Pspoof,  # Prior probability of a spoofing attack

@@ -2,7 +2,7 @@
 """
 Adopted from https://github.com/shimhz/a_DCF
 
-a-DCF: an architecture agnostic metric with application to 
+a-DCF: an architecture agnostic metric with application to
 spoofing-robust speaker verification, published in Odyssey 2024.
 
 MIT License
@@ -40,13 +40,14 @@ class CostModel:
     """Class describing SASV-DCF's relevant costs"""
     def __init__(self, Pspf = 0.05, Pnontrg = 0.05, Ptrg = 0.9,
                  Cmiss = 1, Cfa_asv = 10, Cfa_cm = 20):
+        """Initialize prior probabilities and costs for a-DCF evaluation."""
         self.Pspf = Pspf
         self.Pnontrg = Pnontrg
         self.Ptrg = Ptrg
         self.Cmiss = Cmiss
         self.Cfa_asv = Cfa_asv
         self.Cfa_cm = Cfa_cm
-        
+
 
 def calculate_a_dcf(
     sasv_score_dir: str,
@@ -54,6 +55,7 @@ def calculate_a_dcf(
     printres: bool = True,
     ):
 
+    """Load SASV scores from disk and calculate the minimum normalized a-DCF."""
     data = np.genfromtxt(sasv_score_dir, dtype=str, delimiter=" ")
     scores = data[:, 2].astype(np.float64)
     keys = data[:, 3]
@@ -74,6 +76,7 @@ def _calculate_a_dcf(
         printres: bool = True,
     ):
 
+    """Calculate normalized a-DCF values from target, nontarget, and spoof scores."""
     far_asvs, far_cms, frrs, a_dcf_thresh = compute_a_det_curve(trg, nontrg, spf)
 
     a_dcfs = np.array([cost_model.Cmiss * cost_model.Ptrg]) * np.array(frrs) + \
@@ -100,6 +103,7 @@ def _calculate_a_dcf(
 
 
 def normalize(a_dcfs: np.ndarray, cost_model: CostModel) -> np.ndarray:
+    """Normalize raw a-DCF costs by the best trivial decision cost."""
     a_dcf_all_accept = np.array([cost_model.Cfa_asv * cost_model.Pnontrg + \
         cost_model.Cfa_cm * cost_model.Pspf])
     a_dcf_all_reject = np.array([cost_model.Cmiss * cost_model.Ptrg])
@@ -111,6 +115,7 @@ def normalize(a_dcfs: np.ndarray, cost_model: CostModel) -> np.ndarray:
 
 def compute_a_det_curve(trg_scores: np.ndarray, nontrg_scores: np.ndarray, spf_scores: np.ndarray) -> List[List]:
 
+    """Compute target, nontarget, spoof error curves and thresholds for a-DCF."""
     all_scores = np.concatenate((trg_scores, nontrg_scores, spf_scores))
     labels = np.concatenate(
         (np.ones_like(trg_scores), np.zeros_like(nontrg_scores), np.ones_like(spf_scores) + 1))

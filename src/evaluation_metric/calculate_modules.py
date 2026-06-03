@@ -4,7 +4,7 @@ import numpy as np
 def obtain_asv_error_rates(tar_asv, non_asv, spoof_asv, asv_threshold):
     """
     compute ASV error rates
-    
+
     input
     -----
       tar_asv: np.array, (#N, ), target bonafide scores
@@ -37,12 +37,12 @@ def obtain_asv_error_rates(tar_asv, non_asv, spoof_asv, asv_threshold):
 def compute_det_curve(target_scores, nontarget_scores):
     """
     compute DET curve values
-                                                                           
+
     input
     -----
       target_scores:    np.array, target trial scores
       nontarget_scores: np.array, nontarget trial scores
-    
+
     output
     ------
       frr:   np.array, FRR, (#N, ), where #N is total number of scores + 1
@@ -79,6 +79,7 @@ def compute_det_curve(target_scores, nontarget_scores):
 def compute_Pmiss_Pfa_Pspoof_curves(tar_scores, non_scores, spf_scores):
 
     # Concatenate all scores and designate arbitrary labels 1=target, 0=nontarget, -1=spoof
+    """Compute CM miss, nontarget false alarm, spoof false alarm, and threshold curves."""
     all_scores = np.concatenate((tar_scores, non_scores, spf_scores))
     labels = np.concatenate((np.ones(tar_scores.size), np.zeros(non_scores.size), -1*np.ones(spf_scores.size)))
 
@@ -109,6 +110,7 @@ def compute_eer(target_scores, nontarget_scores):
 
 
 def compute_mindcf(frr, far, thresholds, Pspoof, Cmiss, Cfa):
+    """Compute the minimum normalized detection cost and its threshold."""
     min_c_det = float("inf")
     min_c_det_threshold = thresholds
 
@@ -143,7 +145,7 @@ def compute_actDCF(bonafide_scores, spoof_scores, Pspoof, Cmiss, Cfa):
     """
     # the beta in evaluation plan (eq.(3))
     beta = Cmiss * (1 - Pspoof) / (Cfa * Pspoof)
-    
+
     # compute the decision threshold based on
     threshold = - np.log(beta)
 
@@ -158,9 +160,9 @@ def compute_actDCF(bonafide_scores, spoof_scores, Pspoof, Cmiss, Cfa):
 
     # normalized DCF
     act_dcf = act_dcf / np.min([Cfa * Pspoof, Cmiss * (1 - Pspoof)])
-    
+
     return act_dcf, threshold
-    
+
 
 
 def compute_tDCF_legacy(
@@ -168,6 +170,7 @@ def compute_tDCF_legacy(
         Pmiss_spoof_asv, cost_model, print_cost):
 
     # Sanity check of cost parameters
+    """Compute the legacy normalized tandem detection cost curve."""
     if cost_model['Cfa_asv'] < 0 or cost_model['Cmiss_asv'] < 0 or \
             cost_model['Cfa_cm'] < 0 or cost_model['Cmiss_cm'] < 0:
         print('WARNING: Usually the cost values should be positive!')
@@ -259,7 +262,7 @@ def compute_tDCF_legacy(
 
 
 def compute_tDCF(
-        bonafide_score_cm, spoof_score_cm, 
+        bonafide_score_cm, spoof_score_cm,
         Pfa_asv, Pmiss_asv, Pfa_spoof_asv, cost_model, print_cost):
     """
     Compute Tandem Detection Cost Function (t-DCF) [1] for a fixed ASV system.
@@ -331,8 +334,8 @@ def compute_tDCF(
 
     References:
 
-      [1] T. Kinnunen, H. Delgado, N. Evans,K.-A. Lee, V. Vestman, 
-          A. Nautsch, M. Todisco, X. Wang, M. Sahidullah, J. Yamagishi, 
+      [1] T. Kinnunen, H. Delgado, N. Evans,K.-A. Lee, V. Vestman,
+          A. Nautsch, M. Todisco, X. Wang, M. Sahidullah, J. Yamagishi,
           and D.-A. Reynolds, "Tandem Assessment of Spoofing Countermeasures
           and Automatic Speaker Verification: Fundamentals," IEEE/ACM Transaction on
           Audio, Speech and Language Processing (TASLP).
@@ -412,21 +415,21 @@ def compute_tDCF(
 def calculate_CLLR(target_llrs, nontarget_llrs):
     """
     Calculate the CLLR of the scores.
-    
+
     Parameters:
     target_llrs (list or numpy array): Log-likelihood ratios for target trials.
     nontarget_llrs (list or numpy array): Log-likelihood ratios for non-target trials.
-    
+
     Returns:
     float: The calculated CLLR value.
     """
     def negative_log_sigmoid(lodds):
         """
         Calculate the negative log of the sigmoid function.
-        
+
         Parameters:
         lodds (numpy array): Log-odds values.
-        
+
         Returns:
         numpy array: The negative log of the sigmoid values.
         """
@@ -435,10 +438,10 @@ def calculate_CLLR(target_llrs, nontarget_llrs):
     # Convert the input lists to numpy arrays if they are not already
     target_llrs = np.array(target_llrs)
     nontarget_llrs = np.array(nontarget_llrs)
-    
+
     # Calculate the CLLR value
     cllr = 0.5 * (np.mean(negative_log_sigmoid(target_llrs)) + np.mean(negative_log_sigmoid(-nontarget_llrs))) / np.log(2)
-    
+
     return cllr
 
 
@@ -447,7 +450,7 @@ def compute_teer(Pmiss_CM, Pfa_CM, tau_CM,
                  Pmiss_ASV, Pfa_non_ASV, Pfa_spf_ASV, tau_ASV,
                  flag_return_index=False):
     """Compute concurrent t-EER
-    
+
     input
     -----
       Pmiss_CM: np.array, (N, ), miss rates of CM
@@ -458,7 +461,7 @@ def compute_teer(Pmiss_CM, Pfa_CM, tau_CM,
       Pfa_non_ASV: np.array, (M, ), false acc rates of nontarget data ASV
       Pfa_spf_ASV: np.array, (M, ), false acc rates of spoofed data of ASV
       tau_asv: np.array, (M, ), thresholds of ASV
-    
+
       flag_return_index: bool, whether return the index of the CM and ASV
         scores for concurrent tEER, default False
 
@@ -470,7 +473,7 @@ def compute_teer(Pmiss_CM, Pfa_CM, tau_CM,
     M = len(target_ASV_scores) + len(nontarget_ASV_scores) + len(spoofed)
     """
 
-    
+
     # Different spoofing prevalence priors (rho) parameters values
     # rho_vals            = [0,0.5,1]
     # for concurrent t-EER, any rho gives the same result, so use one
@@ -495,7 +498,7 @@ def compute_teer(Pmiss_CM, Pfa_CM, tau_CM,
         xpoint_crit_best = np.inf
         xpoint = np.empty(2)
         xpoint_index = []
-        
+
         # Loop over all possible ASV thresholds
         for tau_ASV_idx, tau_ASV_val in enumerate(tau_ASV):
 
@@ -556,13 +559,13 @@ def compute_teer_accelerated(Pmiss_CM, Pfa_CM, tau_CM, Pmiss_ASV, Pfa_non_ASV, P
     # index for downsampling
     ds_asv_ratio = tau_ASV.shape[0] // size_decimated
     ds_cm_ratio = tau_CM.shape[0] // size_decimated
-    
+
     if ds_asv_ratio > 0 and ds_cm_ratio > 0:
         # down-sampling the original scores
         # do a coarse search
         tmp_asv_idx = np.arange(tau_ASV.shape[0])[::ds_asv_ratio]
         tmp_cm_idx = np.arange(tau_CM.shape[0])[::ds_cm_ratio]
-        
+
         _, approx_teer_index = compute_teer(
             Pmiss_CM[tmp_cm_idx], Pfa_CM[tmp_cm_idx], tau_CM[tmp_cm_idx],
             Pmiss_ASV[tmp_asv_idx], Pfa_non_ASV[tmp_asv_idx],
@@ -573,19 +576,19 @@ def compute_teer_accelerated(Pmiss_CM, Pfa_CM, tau_CM, Pmiss_ASV, Pfa_non_ASV, P
 
     if len(approx_teer_index):
         # fine-grid search
-        
+
         # approximate index in the original data arrary
         cen_asv_idx = approx_teer_index[0] * ds_asv_ratio
         cen_cm_idx = approx_teer_index[1] * ds_cm_ratio
-    
+
         # now focus on a region surrounding the returned index,
         #  then obtain tEER
         asv_bin_1 = np.max([cen_asv_idx - bin_width, 0])
         asv_bin_2 = np.min([cen_asv_idx + bin_width, len(tau_ASV)])
-        
+
         cm_bin_1 = np.max([cen_cm_idx - bin_width, 0])
         cm_bin_2 = np.min([cen_cm_idx + bin_width, len(tau_CM)])
-        
+
         teer = compute_teer(
             Pmiss_CM[cm_bin_1:cm_bin_2],
             Pfa_CM[cm_bin_1:cm_bin_2],
@@ -594,12 +597,12 @@ def compute_teer_accelerated(Pmiss_CM, Pfa_CM, tau_CM, Pmiss_ASV, Pfa_non_ASV, P
             Pfa_non_ASV[asv_bin_1:asv_bin_2],
             Pfa_spf_ASV[asv_bin_1:asv_bin_2],
             tau_ASV[asv_bin_1:asv_bin_2])
-        
+
     else:
         # use original implementation
         teer = compute_teer(
             Pmiss_CM, Pfa_CM, tau_CM,
             Pmiss_ASV, Pfa_non_ASV, Pfa_spf_ASV, tau_ASV)
-        
+
     return teer
 

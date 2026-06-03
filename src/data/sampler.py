@@ -13,6 +13,7 @@ class TokenBatchSampler(Sampler[list[int]]):
         drop_last: bool = False,
         seed: int | None = None,
     ):
+        """Initialize a sampler that limits each batch by total sequence length."""
         if max_tokens <= 0:
             raise ValueError("max_tokens must be > 0")
         self.lengths = lengths
@@ -21,12 +22,13 @@ class TokenBatchSampler(Sampler[list[int]]):
         self.drop_last = drop_last
         self.seed = seed
         self.rng = random.Random(self.seed)
-    
+
     def __iter__(self):
+        """Yield token-budgeted batches of dataset indices."""
         indices = list(range(len(self.lengths)))
         if self.shuffle:
             self.rng.shuffle(indices)
-        
+
         batch = []
         total = 0
         for idx in indices:
@@ -37,11 +39,12 @@ class TokenBatchSampler(Sampler[list[int]]):
                 total = 0
             batch.append(idx)
             total += length
-        
+
         if batch and not self.drop_last:
             yield batch
-    
+
     def __len__(self):
+        """Estimate the number of token-budgeted batches."""
         if not self.lengths:
             return 0
         total_tokens = sum(self.lengths)
@@ -61,6 +64,7 @@ class BalancedLengthSampler(Sampler[list[int]]):
         drop_last: bool = False,
         seed: int | None = None,
     ):
+        """Initialize a sampler that mixes short and long samples in each batch."""
         self.lengths = lengths
         self.batch_size = batch_size
         self.shuffle = shuffle
@@ -69,6 +73,7 @@ class BalancedLengthSampler(Sampler[list[int]]):
         self.rng = random.Random(self.seed)
 
     def __iter__(self):
+        """Yield batches assembled from length-sorted buckets."""
         n = len(self.lengths)
         # 取得排序後的索引，改為 reverse=True 讓長檔案排在前面
         indices = list(range(n))
@@ -102,6 +107,7 @@ class BalancedLengthSampler(Sampler[list[int]]):
                 yield batch
 
     def __len__(self):
+        """Return the number of balanced batches."""
         n = len(self.lengths)
         if self.drop_last:
             return n // self.batch_size
@@ -122,6 +128,7 @@ class PaddingBatchSampler(Sampler[list[int]]):
         drop_last: bool = False,
         seed: int | None = None,
     ):
+        """Initialize a sampler constrained by padded batch area."""
         if max_tokens <= 0:
             raise ValueError("max_tokens must be > 0")
         self.lengths = lengths
@@ -132,6 +139,7 @@ class PaddingBatchSampler(Sampler[list[int]]):
         self.rng = random.Random(self.seed)
 
     def __iter__(self):
+        """Yield batches whose padded area stays within the token budget."""
         indices = list(range(len(self.lengths)))
         if self.shuffle:
             self.rng.shuffle(indices)
@@ -154,6 +162,7 @@ class PaddingBatchSampler(Sampler[list[int]]):
             yield batch
 
     def __len__(self):
+        """Estimate the number of padded-area batches."""
         if not self.lengths:
             return 0
         # 估計長度（由於是動態的，精確長度難以預先得知，這裡提供一個保守估計）

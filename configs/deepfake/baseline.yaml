@@ -19,8 +19,8 @@ general:
   produce_evaluation_file: true
 
 model:
-  name: EmotionBaselineModel
-  tag: v11
+  name: DeepfakeCrabModel
+  tag: v7
   description: ''
   ssl_model_str: WAV2VEC2_XLSR_300M
   
@@ -33,7 +33,7 @@ solver:
   max_epochs: 32
   freeze_epochs: 0
   lr:
-  - 0.0001
+    default: 0.0001
   iters_to_accumulate: 8
   amp_dtype: fp16
   criterions:
@@ -43,14 +43,15 @@ solver:
       total_weight: 1.0
 
 datasets:
-- name: ASVspoof5
-  # dir: /home/poyu39/gitlab/fcu-slp/ssl-mamba/dataset
-  dir: /home/icebird/01_proj/ssl-mamba/dataset
-- name: ASVspoof2021_DF
-  dir: /home/icebird/01_proj/ssl-mamba/dataset
-- name: ASVspoof2021_LA
-  dir: /home/icebird/01_proj/ssl-mamba/dataset
-
+  train_datasets:
+  - name: ASVspoof5
+    # dir: /home/poyu39/gitlab/fcu-slp/ssl-mamba/dataset
+    dir: /home/icebird/01_proj/ssl-mamba/dataset
+  test_datasets:
+  - name: ASVspoof2021_DF
+    dir: /home/icebird/01_proj/ssl-mamba/dataset
+  - name: ASVspoof2021_LA
+    dir: /home/icebird/01_proj/ssl-mamba/dataset
 
 dataloader:
   name: Dataset

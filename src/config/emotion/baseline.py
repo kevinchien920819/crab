@@ -23,12 +23,7 @@ class EmotionBaselineModelConfig:
     d_model: int = 512
     d_contrastive: int = 512
 
-    lr: float = 1e-6
-    ssl_lr: float = 1e-6
-    text_lr: float = 1e-6
-    ser_lr: float = 1e-4
     dropout: float = 0.5
-    use_gradient_checkpointing: bool = False
     
 @dataclass
 class EmotionBaselineConfig:

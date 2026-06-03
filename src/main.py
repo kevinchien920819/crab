@@ -17,16 +17,19 @@ from config import config_to_yaml, load_config
 from config.deepfake.baseline import DeepfakeBaselineConfig
 from config.emotion.baseline import EmotionBaselineConfig
 from controller import Tester, Trainer
-from data import EmotionDataset, get_dataloader, load_dataset
+from data import DeepfakeDataset, EmotionDataset, get_dataloader, load_dataset
 from data.loader import get_trial_path, resolve_subset_list
 from tools import LineBot
 from utils import set_seed, setup_freeze, setup_logger, setup_tf32
 
 
 def handle_exceptions(logger: Logger):
+    """Create a decorator that logs exceptions raised by wrapped functions."""
     def decorator(func):
+        """Decorate a function with exception logging."""
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
+            """Call the wrapped function and log any exception before re-raising it."""
             try:
                 return func(*args, **kwargs)
             except Exception as e:
@@ -39,43 +42,56 @@ def handle_exceptions(logger: Logger):
 @click.command()
 @click.option('--config-name', help='Configuration name to load', required=True)
 def main(config_name) -> None:
-    cfg: EmotionBaselineConfig = load_config(config_name)
-    
+    """CLI entry point that loads a config and starts the pipeline."""
+    cfg = load_config(config_name)
+
     os.makedirs(cfg.general.work_dir, exist_ok=True)
-    
+
     logger = setup_logger(
         name='main',
         project_root=os.getcwd(),
         log_file=f'{cfg.general.work_dir}/{time.strftime("%Y%m%d_%H%M%S")}_main.log',
         level=logging.INFO
     )
-    
+
     logger.info(f'Using config: \n{config_to_yaml(cfg)}')
-    
+
     pipeline(logger, cfg)
 
-def pipeline(logger: logging.Logger, cfg: EmotionBaselineConfig):
+def _create_dataset(cfg, tokenizer):
+    """根據 config 類型建立對應的 Dataset 物件。"""
+    if isinstance(cfg, DeepfakeBaselineConfig):
+        return DeepfakeDataset()
+    else:
+        return EmotionDataset(tokenizer=tokenizer, text_max_len=cfg.dataloader.text_max_len)
+
+def pipeline(logger: logging.Logger, cfg):
     # set seed and deterministic mode
+    """Run model loading, training, evaluation, logging, and notifications."""
     set_seed(cfg.general.seed, cfg.general.deterministic)
     model = None
     if isinstance(cfg, EmotionBaselineConfig):
         from model.emotion.loader import load_model
         model = load_model(logger, cfg)
-    
+    elif isinstance(cfg, DeepfakeBaselineConfig):
+        from model.deepfake.loader import load_model
+        model = load_model(logger, cfg)
+
+
     if model is None:
         raise ValueError('Model loading failed. Please check the configuration and model loader.')
-    
+
     # parameters count
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f'Model Total Parameters: {total_params:,}')
     logger.info(f'Model Trainable Parameters: {trainable_params:,}')
-    
+
     setup_freeze(cfg, logger, model)
-    
+
     setup_tf32(cfg, logger)
-    
-    
+
+
     # setup wandb
     wandb_run = None
     if cfg.wandb.enable:
@@ -87,7 +103,7 @@ def pipeline(logger: logging.Logger, cfg: EmotionBaselineConfig):
             config=asdict(cfg),
         )
         logger.info(f'WandB initialized: Project - {cfg.wandb.project}, Run Name - {cfg.model.name}')
-    
+
     training_time = None
     tokenizer = getattr(model, 'text_bundle', None)
     # torchtext bundles need .transform(), transformers tokenizers do not
@@ -96,18 +112,18 @@ def pipeline(logger: logging.Logger, cfg: EmotionBaselineConfig):
 
     if cfg.general.train:
         logger.info('Loading train and dev datasets')
-        
-        train_dataset = EmotionDataset(tokenizer=tokenizer, text_max_len=cfg.dataloader.text_max_len)
+
+        train_dataset = _create_dataset(cfg, tokenizer)
         train_dataset = load_dataset(cfg_dataset=cfg.datasets.train_datasets[0], dataset=train_dataset, subset_list=['train'])
-        
-        dev_dataset = EmotionDataset(tokenizer=tokenizer, text_max_len=cfg.dataloader.text_max_len)
+
+        dev_dataset = _create_dataset(cfg, tokenizer)
         dev_dataset = load_dataset(cfg_dataset=cfg.datasets.train_datasets[0], dataset=dev_dataset, subset_list=['dev'])
 
         train_dataloader = get_dataloader(cfg, train_dataset, 'train', True)
         dev_dataloader = get_dataloader(cfg, dev_dataset, 'dev', False)
-        
+
         logger.info(f'Start train and dev')
-        
+
         trial_path = get_trial_path(cfg.datasets.train_datasets[0], 'dev')
         trainer = Trainer(
             logger,
@@ -118,20 +134,20 @@ def pipeline(logger: logging.Logger, cfg: EmotionBaselineConfig):
             str(trial_path) if trial_path else None,
             cfg.datasets.train_datasets[0].name
         )
-        
+
         starttime = time.time()
         trainer.run()
         endtime = time.time()
-        
+
         training_time = endtime - starttime
-        
+
         logger.info(f'Train and dev completed in {training_time/60:.2f} minutes')
-        
+
         # Clean up trainer to release memory before evaluation
         del trainer
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-    
+
     if cfg.general.eval:
         logger.info('Load eval dataset')
         for cfg_dataset in cfg.datasets.test_datasets:
@@ -144,7 +160,7 @@ def pipeline(logger: logging.Logger, cfg: EmotionBaselineConfig):
             logger.info(f'Loaded model from checkpoint: {cfg.general.testing_ckpt}')
 
             for eval_subset in eval_subsets:
-                eval_dataset = EmotionDataset(tokenizer=tokenizer, text_max_len=cfg.dataloader.text_max_len)
+                eval_dataset = _create_dataset(cfg, tokenizer)
                 eval_dataset = load_dataset(cfg_dataset=cfg_dataset, dataset=eval_dataset, subset_list=[eval_subset])
                 eval_dataloader = get_dataloader(cfg, eval_dataset, eval_subset, False)
 
@@ -191,7 +207,7 @@ def pipeline(logger: logging.Logger, cfg: EmotionBaselineConfig):
                         loss,
                         metrices
                     )
-    
+
     if cfg.wandb.enable:
         wandb_run.finish()
 

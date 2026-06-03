@@ -8,13 +8,15 @@ from linebot.models import TextSendMessage
 
 class LineBot:
     def __init__(self, channel_access_token, user_id, logger: Logger):
+        """Initialize the LINE Bot API client and recipient metadata."""
         self.line_bot_api = LineBotApi(channel_access_token)
         self.user_id = user_id
         self.logger = logger
         self.logger.info(f'LineNotifier initialized with user_id: {user_id}')
-    
+
     def send(self, cfg: Union[DeepfakeBaselineConfig] , total_params, loss, err):
-        
+
+        """Send a training summary notification through LINE Bot."""
         if isinstance(cfg, DeepfakeBaselineConfig):
             message = f'''\
 DeepfakeModel Train Finished!

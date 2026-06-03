@@ -1,14 +1,15 @@
 from pathlib import Path
+from typing import Union
 
 from config.base import BaseConfig, DatasetConfig
-from data import Dataset
-from torch.utils.data import DataLoader
+from data import DeepfakeDataset,EmotionDataset
+from torch.utils.data import DataLoader, Dataset
 
-from data.dataset import EmotionDataset
 
 from .sampler import TokenBatchSampler, BalancedLengthSampler, PaddingBatchSampler
 
 def resolve_subset_list(cfg_dataset: DatasetConfig, subset_list: list[str]) -> list[str]:
+    """Resolve generic subset aliases into dataset-specific split names."""
     dataset_path = Path(cfg_dataset.dir)
     resolved_subsets: list[str] = []
 
@@ -33,26 +34,34 @@ def resolve_subset_list(cfg_dataset: DatasetConfig, subset_list: list[str]) -> l
 
     return resolved_subsets
 
-def load_dataset(cfg_dataset: DatasetConfig, dataset: EmotionDataset, subset_list: list):
+def load_dataset(cfg_dataset: DatasetConfig, dataset: Union[EmotionDataset, DeepfakeDataset], subset_list: list):
+    """Dispatch dataset preloading based on the configured dataset name."""
+    if cfg_dataset.name.startswith("ASVspoof") and not isinstance(dataset, DeepfakeDataset):
+        raise TypeError(f"{cfg_dataset.name} need to use DeepfakeDataset, but got {type(dataset).__name__}")
+
     resolved_subset_list = resolve_subset_list(cfg_dataset, subset_list)
 
-    # if cfg_dataset.name == 'ASVspoof2019_LA':
-    #     dataset.preload_asvspoof(Path(cfg_dataset.dir), subset_list=subset_list, use_duration=cfg_dataset.use_duration)
-    # elif cfg_dataset.name == 'ASVspoof2021_LA':
-    #     dataset.preload_asvspoof(Path(cfg_dataset.dir), year = '2021_LA', subset_list=subset_list, use_duration=cfg_dataset.use_duration)
-    # elif cfg_dataset.name == 'ASVspoof2021_DF':
-    #     dataset.preload_asvspoof(Path(cfg_dataset.dir), year = '2021_DF', subset_list=subset_list, use_duration=cfg_dataset.use_duration)
-    # elif cfg_dataset.name == 'ASVspoof5':
-    #     dataset.preload_asvspoof(Path(cfg_dataset.dir), year = '5', subset_list=subset_list, use_duration=cfg_dataset.use_duration)
+    if cfg_dataset.name == 'ASVspoof2019_LA':
+        dataset.preload_asvspoof(Path(cfg_dataset.dir), subset_list=subset_list, use_duration=cfg_dataset.use_duration)
+    elif cfg_dataset.name == 'ASVspoof2021_LA':
+        dataset.preload_asvspoof(Path(cfg_dataset.dir), year = '2021_LA', subset_list=subset_list, use_duration=cfg_dataset.use_duration)
+    elif cfg_dataset.name == 'ASVspoof2021_DF':
+        dataset.preload_asvspoof(Path(cfg_dataset.dir), year = '2021_DF', subset_list=subset_list, use_duration=cfg_dataset.use_duration)
+    elif cfg_dataset.name == 'ASVspoof5':
+        dataset.preload_asvspoof(Path(cfg_dataset.dir), year = '5', subset_list=subset_list, use_duration=cfg_dataset.use_duration)
     if cfg_dataset.name == 'IEMOCAP':
+        resolved_subset_list = resolve_subset_list(cfg_dataset, subset_list)
         dataset.preload_iemocap(Path(cfg_dataset.dir), subset_list=resolved_subset_list)
     elif cfg_dataset.name == 'MELD':
+        resolved_subset_list = resolve_subset_list(cfg_dataset, subset_list)
         dataset.preload_meld(Path(cfg_dataset.dir), subset_list=resolved_subset_list)
     elif cfg_dataset.name == 'MSP_Podcast':
+        resolved_subset_list = resolve_subset_list(cfg_dataset, subset_list)
         dataset.preload_msp_podcast(Path(cfg_dataset.dir), subset_list=resolved_subset_list)
     return dataset
 
 def get_trial_path(cfg_dataset: DatasetConfig, subset: str) -> Path:
+    """Return the protocol or trial metadata path for a dataset split."""
     dataset_path = Path(cfg_dataset.dir)
     if cfg_dataset.name == 'ASVspoof2019_LA':
         year = '2019_LA'
@@ -84,6 +93,7 @@ def get_trial_path(cfg_dataset: DatasetConfig, subset: str) -> Path:
 
 
 def get_dataloader(cfg: BaseConfig, dataset: Dataset, subset_name: str='', shuffle=True) -> DataLoader:
+    """Create a DataLoader with the configured fixed or dynamic batching strategy."""
     max_tokens = cfg.dataloader.token_batch_size
     batch_size = cfg.dataloader.batch_size.get(
         subset_name,
@@ -101,7 +111,7 @@ def get_dataloader(cfg: BaseConfig, dataset: Dataset, subset_name: str='', shuff
             drop_last=False,
             seed=cfg.general.seed,
         )
-    
+
     # 2. TokenBatchSampler
     if cfg.dataloader.name == 'TokenBatchSampler' and max_tokens > 0:
         batch_sampler = TokenBatchSampler(
@@ -111,7 +121,7 @@ def get_dataloader(cfg: BaseConfig, dataset: Dataset, subset_name: str='', shuff
             drop_last=False,
             seed=cfg.general.seed,
         )
-        
+
     # 3. BalancedLengthSampler
     if cfg.dataloader.name == 'BalancedLengthSampler':
         batch_sampler = BalancedLengthSampler(

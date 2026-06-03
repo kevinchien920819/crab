@@ -44,20 +44,25 @@ class SolverConfig:
     scheduler: str = 'div'
     warmup_ratio: float = 0.05
     min_lr_ratio: float = 0.1
+    min_lr: dict | float | None = None
     max_grad_norm: float = 1.0
     
     max_epochs: int = 100
     freeze_epochs: int = 0
-    lr: list[float] = field(default_factory=lambda: [0.0001, 0.00001])
+    lr: dict = field(default_factory=lambda: {
+        # 'ssl_model': 1e-6,
+        # 'text_model': 1e-6,
+        # 'ser_model': 1e-4,
+    })
     iters_to_accumulate: int = 1
     amp_dtype: str = 'fp16'  # 'fp16', 'bf16', or 'none'
     
     criterions: dict = field(default_factory=lambda: {
-        'ce_loss': {
-            'name': 'CrossEntropyLoss',
-            'label_smoothing': 0.1,
-            'total_weight': 1.0,
-        }
+        # 'ce_loss': {
+        #     'name': 'CrossEntropyLoss',
+        #     'label_smoothing': 0.1,
+        #     'total_weight': 1.0,
+        # }
     })
 
 @dataclass
