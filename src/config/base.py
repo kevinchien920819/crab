@@ -104,6 +104,8 @@ class DataloaderConfig:
     non_blocking_transfer: bool = True  # 搬移到 GPU 時使用 non_blocking，需搭配 pin_memory
     token_batch_size: int = 0           # 每個 batch 的總 token/frame 上限，0 表示停用
     text_max_len: int = 128             # 文字固定長度上限，與參考實作一致
+    smoothed_class_batch_size: int = 500  # SmoothedClassBatchSampler 每個 mini-batch 的樣本數
+    class_smoothing_power: float = 0.5    # 1.0 保留原分佈，0.0 接近類別平均
     
     batch_size: dict = field(default_factory=lambda: {
         'train': 128,

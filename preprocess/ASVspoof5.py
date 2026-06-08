@@ -6,6 +6,7 @@ import sys
 from dataclasses import asdict, fields
 from pathlib import Path
 from typing import Literal, TypeAlias
+from textgrid import read_textgrid
 
 from tqdm import tqdm
 
@@ -158,7 +159,7 @@ def parse_protocol_row(line: str, protocol_path: Path, line_no: int) -> dict[str
 
 
 def read_textgrid_intervals(textgrid_path: Path) -> dict[str, list[Interval]]:
-    """Read interval tiers from a Praat TextGrid file.
+    """Read interval tiers from a Praat TextGrid file via ``read_textgrid``.
 
     Args:
         textgrid_path: Path to one TextGrid transcript file.
@@ -169,39 +170,14 @@ def read_textgrid_intervals(textgrid_path: Path) -> dict[str, list[Interval]]:
         preserved here and filtered later by callers.
     """
     tiers: dict[str, list[Interval]] = {}
-    current_tier = ""
-    in_interval = False
-    xmin: float | None = None
-    xmax: float | None = None
+    textgrid = read_textgrid(textgrid_path)
 
-    with textgrid_path.open("r", encoding="utf-8", errors="ignore") as f:
-        for raw_line in f:
-            line = raw_line.strip()
-            name_match = re.match(r'name = "(.*)"', line)
-            if name_match:
-                current_tier = name_match.group(1).strip().lower()
-                tiers.setdefault(current_tier, [])
-                continue
-
-            if re.match(r"intervals \[\d+\]:", line):
-                in_interval = True
-                xmin = None
-                xmax = None
-                continue
-
-            if not in_interval:
-                continue
-
-            if line.startswith("xmin ="):
-                xmin = float(line.split("=", 1)[1].strip())
-            elif line.startswith("xmax ="):
-                xmax = float(line.split("=", 1)[1].strip())
-            elif line.startswith("text ="):
-                text_match = re.match(r'text = "(.*)"', line)
-                text = text_match.group(1).strip() if text_match else ""
-                if current_tier and xmin is not None and xmax is not None:
-                    tiers.setdefault(current_tier, []).append((xmin, xmax, text))
-                in_interval = False
+    for item in textgrid.items:
+        tier_name = item.name.strip().lower()
+        tiers.setdefault(tier_name, []).extend(
+            (interval.xmin, interval.xmax, interval.text)
+            for interval in item.intervals
+        )
 
     return tiers
 
@@ -744,7 +720,7 @@ def main() -> None:
         "--transcript",
         "-t",
         type=Path,
-        default=Path("dataset/ASVspoof5/ASVspoof5_transcript"),
+        default=Path("dataset/ASVspoof5/ASVspoof5_syllabified_textgrid"),
         help="ASVspoof5 transcript root directory",
     )
     parser.add_argument(

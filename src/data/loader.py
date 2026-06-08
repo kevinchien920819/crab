@@ -6,7 +6,25 @@ from data import DeepfakeDataset,EmotionDataset
 from torch.utils.data import DataLoader, Dataset
 
 
-from .sampler import TokenBatchSampler, BalancedLengthSampler, PaddingBatchSampler
+from .sampler import TokenBatchSampler, BalancedLengthSampler, PaddingBatchSampler, SmoothedClassBatchSampler
+
+
+def get_dataset_labels(dataset: Dataset) -> list[int]:
+    """Return class labels from preloaded dataset samples."""
+    if not hasattr(dataset, 'data'):
+        raise ValueError("SmoothedClassBatchSampler requires a dataset with preloaded data")
+
+    labels = []
+    for idx, sample in enumerate(dataset.data):
+        label = None
+        for field_name in ('deepfake_label', 'emotion_label', 'sentiment_label'):
+            label = getattr(sample, field_name, None)
+            if label is not None:
+                break
+        if label is None:
+            raise ValueError(f"Sample at index {idx} has no class label")
+        labels.append(label)
+    return labels
 
 def resolve_subset_list(cfg_dataset: DatasetConfig, subset_list: list[str]) -> list[str]:
     """Resolve generic subset aliases into dataset-specific split names."""
@@ -132,7 +150,18 @@ def get_dataloader(cfg: BaseConfig, dataset: Dataset, subset_name: str='', shuff
             seed=cfg.general.seed,
         )
 
-    # 4. Default dynamic sampler fallback if token_batch_size is set but no specific sampler name is given
+    # 4. SmoothedClassBatchSampler
+    if cfg.dataloader.name == 'SmoothedClassBatchSampler':
+        batch_sampler = SmoothedClassBatchSampler(
+            labels=get_dataset_labels(dataset),
+            batch_size=cfg.dataloader.smoothed_class_batch_size,
+            smoothing_power=cfg.dataloader.class_smoothing_power,
+            shuffle=shuffle,
+            drop_last=False,
+            seed=cfg.general.seed,
+        )
+
+    # 5. Default dynamic sampler fallback if token_batch_size is set but no specific sampler name is given
     if max_tokens > 0 and batch_sampler is None:
         batch_sampler = TokenBatchSampler(
             lengths=lengths,
@@ -155,7 +184,7 @@ def get_dataloader(cfg: BaseConfig, dataset: Dataset, subset_name: str='', shuff
             prefetch_factor     = cfg.dataloader.prefetch_factor if cfg.dataloader.num_workers > 0 else None,
         )
 
-    # 5. Default fixed batch size DataLoader
+    # 6. Default fixed batch size DataLoader
     return DataLoader(
         dataset,
         num_workers=cfg.dataloader.num_workers,

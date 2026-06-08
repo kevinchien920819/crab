@@ -3,9 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torchaudio import pipelines
-from torchaudio.models import Wav2Vec2Model,wavlm_model
-from torchaudio.pipelines import Wav2Vec2Bundle
-from transformers import AutoModel, AutoTokenizer, WavLMModel, Wav2Vec2Model
+from transformers import AutoModel, AutoTokenizer
 
 from dataclasses import dataclass
 from typing import Optional
@@ -15,27 +13,40 @@ from data.dataclass import Batch
 
 
 class SSLModel(nn.Module):
+    HF_MODEL_MAP = {
+        "WAVLM_BASE": "microsoft/wavlm-base",
+        "WAVLM_BASE_PLUS": "microsoft/wavlm-base-plus",
+        "WAVLM_LARGE": "microsoft/wavlm-large",
+        "WAV2VEC2_BASE": "facebook/wav2vec2-base",
+        "WAV2VEC2_LARGE": "facebook/wav2vec2-large",
+        "WAV2VEC2_LARGE_LV60K": "facebook/wav2vec2-large-lv60",
+        "WAV2VEC2_XLSR53": "facebook/wav2vec2-large-xlsr-53",
+        "WAV2VEC2_XLSR_300M": "facebook/wav2vec2-xls-r-300m",
+        "WAV2VEC2_XLSR_1B": "facebook/wav2vec2-xls-r-1b",
+        "WAV2VEC2_XLSR_2B": "facebook/wav2vec2-xls-r-2b",
+        "HUBERT_BASE": "facebook/hubert-base-ls960",
+        "HUBERT_LARGE": "facebook/hubert-large-ll60k",
+        "HUBERT_XLARGE": "facebook/hubert-xlarge-ll60k",
+        "HUBERT_ASR_LARGE": "facebook/hubert-large-ls960-ft",
+        "HUBERT_ASR_XLARGE": "facebook/hubert-xlarge-ls960-ft",
+    }
+
     def __init__(self, cfg: EmotionBaselineModelConfig):
         """Initialize the speech SSL encoder from torchaudio or Hugging Face backends."""
         super().__init__()
-        bundle: Wav2Vec2Bundle = getattr(pipelines, cfg.ssl_model_str)
-        self.is_wavlm = 'WAVLM' in cfg.ssl_model_str.upper()
-        model_map = {
-            "WAVLM_BASE": "microsoft/wavlm-base",
-            "WAVLM_LARGE": "microsoft/wavlm-large",
-            "WAV2VEC2_BASE": "facebook/wav2vec2-base",
-            "WAV2VEC2_LARGE": "facebook/wav2vec2-large",
-        }
+        self.ssl_model_str = cfg.ssl_model_str
+        self.ssl_model_key = cfg.ssl_model_str.upper()
+        self.ssl_bundle = getattr(pipelines, self.ssl_model_key, None)
+        self.use_hf_backend = self.ssl_bundle is None or 'WAVLM' in self.ssl_model_key
 
-        hf_model_name = model_map.get(cfg.ssl_model_str, cfg.ssl_model_str)
-
-        if self.is_wavlm:
-            self.model = WavLMModel.from_pretrained(hf_model_name)
-            self.ssl_bundle = bundle
-
+        if self.use_hf_backend:
+            hf_model_name = self.HF_MODEL_MAP.get(self.ssl_model_key, cfg.ssl_model_str)
+            self.model = AutoModel.from_pretrained(hf_model_name)
+            self.output_dim = self.model.config.hidden_size
         else:
-            self.model = bundle.get_model()
-            self.ssl_bundle = bundle
+            self.model = self.ssl_bundle.get_model()
+            self.output_dim = self.ssl_bundle._params['encoder_embed_dim']
+
     def _length_to_attention_mask(self, waveform, length):
         """
         waveform: Tensor, shape [B, T]
@@ -56,6 +67,25 @@ class SSLModel(nn.Module):
 
         return attention_mask.long()
 
+    def _hf_feat_lengths(self, length, fallback_size, device):
+        if length is None:
+            return torch.full(
+                size=(fallback_size[0],),
+                fill_value=fallback_size[1],
+                dtype=torch.long,
+                device=device,
+            )
+
+        if hasattr(self.model, "_get_feat_extract_output_lengths"):
+            return self.model._get_feat_extract_output_lengths(length)
+
+        return torch.full(
+            size=(length.size(0),),
+            fill_value=fallback_size[1],
+            dtype=torch.long,
+            device=device,
+        )
+
     def forward(self, waveform, length=None):
         """
         waveform: [B, T]
@@ -64,26 +94,31 @@ class SSLModel(nn.Module):
             ssl_feat: [B, T_feat, hidden_dim]
             feat_length: [B]
         """
-        attention_mask = self._length_to_attention_mask(waveform, length)
+        if self.use_hf_backend:
+            attention_mask = self._length_to_attention_mask(waveform, length)
 
-        outputs = self.model(
-            input_values=waveform,
-            attention_mask=attention_mask,
-            return_dict=True,
-        )
+            outputs = self.model(
+                input_values=waveform,
+                attention_mask=attention_mask,
+                return_dict=True,
+            )
 
-        ssl_feat = outputs.last_hidden_state
+            ssl_feat = outputs.last_hidden_state
+            feat_length = self._hf_feat_lengths(
+                length,
+                fallback_size=(waveform.size(0), ssl_feat.size(1)),
+                device=waveform.device,
+            )
+            return ssl_feat, feat_length
 
-        if length is not None:
-            feat_length = self.model._get_feat_extract_output_lengths(length)
-        else:
+        ssl_feat, feat_length = self.model(waveform, length)
+        if feat_length is None:
             feat_length = torch.full(
                 size=(waveform.size(0),),
                 fill_value=ssl_feat.size(1),
                 dtype=torch.long,
                 device=waveform.device,
             )
-
         return ssl_feat, feat_length
 
 class TextModel(nn.Module):
