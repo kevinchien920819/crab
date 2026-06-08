@@ -21,7 +21,7 @@ class DeepfakeCrabModel(nn.ModuleDict):
         ssl_model = SSLModel(cfg)
         text_model = TextModel(cfg)
 
-        ssl_dim = ssl_model.ssl_bundle._params['encoder_embed_dim']
+        ssl_dim = ssl_model.output_dim
         text_dim = text_model.model.config.hidden_size
 
         super().__init__({
