@@ -1,0 +1,96 @@
+\documentclass[12pt, a4paper, twocolumn]{article}
+\input{packages.tex}
+\input{settings.tex}
+
+\newcommand{\crab}{\textsc{Crab}}
+
+\begin{document}
+
+\twocolumn[
+\begin{@twocolumnfalse}
+\begin{center}
+    \LARGE \textbf{Speech and Language Processing Project Report}\\
+    \large 簡子霖\\
+    \normalsize 逢甲大學資訊工程所\\
+    \vspace{0.4em}
+    \normalsize \texttt{M1406785@o365.fcu.edu.tw}
+\end{center}
+
+\vspace{0.8em}
+\end{@twocolumnfalse}
+]
+
+\section*{Abstract}
+
+This study repurposes \crab{} (Contrastive Representation and Multimodal Aligned Bottleneck) from its original speech emotion recognition setting to audio deepfake detection.
+The goal of audio deepfake detection is to determine whether a speech utterance is bona fide or spoofed by text-to-speech synthesis, voice conversion, replay attacks, or other speech generation techniques.
+Unlike emotion recognition, which predicts affective categories, audio deepfake detection is a security-oriented binary countermeasure task;
+therefore, the model must not only classify correctly but also produce robust spoofing scores under unseen attacks, unseen speakers, and cross-corpus conditions.
+
+The original \crab{} paper builds a bimodal Cross-Modal Transformer with WavLM and RoBERTa,and introduces Multi Layer Contrastive Supervision (MLCS) to apply multi-positive contrastive learning at several intermediate layers, encouraging discriminative speech and text representations before the final classifier \cite{ueda2026crab}.
+This report transfers the same representation-learning idea to audio deepfake detection: a self-supervised speech encoder extracts waveform representations, the prediction target is changed to bona fide/spoof classification, and evaluation follows ASVspoof-style metrics such as Equal Error Rate (EER) and detection cost functions.
+The front part of this report focuses on the motivation, related work, backend detection system, and the role of \crab{} as a representation-learning basis for audio deepfake detection.
+
+\noindent\textbf{Keywords:} audio deepfake detection, ASVspoof, self-supervised speech representation, contrastive learning, \crab
+
+\vspace{1em}
+
+\section{INTRODUCTION}
+With the rapid advancement of neural text-to-speech (TTS) and voice conversion (VC) technologies, synthetic speech has become increasingly natural, speaker-similar, and emotionally expressive.
+Although these technologies have beneficial applications in assistive communication, content creation, and voice interaction systems, they also reduce the cost of generating fake audio.
+Attackers can use only a small amount of speaker data to synthesize speech that mimics specific individuals, enabling scams, forged voice evidence, and attacks against voice-based authentication systems.
+Therefore, Audio Deepfake Detection (ADD) has become a critical research problem at the intersection of speech processing and information security.
+
+In recent years, self-supervised learning (SSL) models have become important front-end components for speech-related tasks because they can learn rich representations from large amounts of unlabeled data.
+Models such as wav2vec 2.0 \cite{baevski2020wav2vec2}, HuBERT \cite{hsu2021hubert}, and WavLM \cite{chen2022wavlm} have shown strong performance across various downstream tasks, including automatic speech recognition, speaker verification, emotion recognition, and spoofing detection.
+
+In anti-spoofing research, recent end-to-end baselines directly learn discriminative cues from raw waveforms.
+For example, the AASIST \cite{jung2021aasist} model uses an integrated spectro-temporal graph attention network to jointly model spoofing artifacts in both spectral and temporal regions, replacing the score-level ensemble of multiple subsystems with a single model.
+However, using a large SSL encoder alone does not guarantee that the detector will have sufficient generalization ability.
+The downstream classification head must still organize intermediate-layer information effectively and prevent the model from relying only on spoofing artifacts that are specific to the training data.
+
+% crab model introduction
+In this work, we use \crab{} as the backbone model.
+Because audio deepfake detection does not mainly depend on semantic relevance, we replace the original text encoder with a prosody encoder.
+The main contributions of this work are summarized as follows:
+\begin{enumerate}
+    \item We redefine the downstream task of the \crab{} model from Speech Emotion Recognition (SER) to Audio Deepfake Detection (ADD).
+    \item We introduce a prosody encoder to provide additional prosodic features for improving deepfake detection.
+    \item We conduct extensive experimental evaluation and analysis, and explain why MLCS and contrastive representation learning may help audio deepfake detection.
+
+\end{enumerate}
+
+This report is organized as follows.
+Section 2 reviews related works on self-supervised representations, Previous ADD Method, multimodal ADD, and crab model. 
+Section 3 describe the modification from crab to fetch ADD task, model architecture, and experience setup.
+Section 4 present the experiment result and evaluation metrices.
+Finally, Section 5 sum up the conclusion of the paper.
+
+\section{RELATED WORK}
+\subsection{Audio Deepfake Detection}
+\subsection{Prosody feature in Audio Deepfake}
+
+\subsection{\crab 模型}
+
+\section{METHODOLOGY}
+\subsection{系統架構}
+
+\section{RESULT}
+
+情緒辨識的評估輸出 WAR 與 UAR：
+\begin{align}
+    \mathrm{WAR}
+    &= \frac{\sum_i \mathbb{I}(\hat{y}_i=y_i)}{N}, \\
+    \mathrm{UAR}
+    &= \frac{1}{K}\sum_{c=1}^{K}
+    \frac{\sum_i \mathbb{I}(\hat{y}_i=c, y_i=c)}
+    {\sum_i \mathbb{I}(y_i=c)}.
+\end{align}
+深偽語音偵測則以 softmax spoof score 計算 EER，並在產生 `evaluation\_scores.txt' 後呼叫 ASVspoof 評測模組計算 minDCF、EER、CLLR 與 Act-DCF。
+
+\section{CONCLUSION}
+
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}

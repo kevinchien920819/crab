@@ -1,0 +1,14 @@
+# LaTeX intermediate files
+/build/
+/*.aux
+/*.bbl
+/*.blg
+/*.fdb_latexmk
+/*.fls
+/*.log
+/*.out
+/*.xdv
+/*.synctex.gz
+
+# Local editor backups
+/*.tex.bak
