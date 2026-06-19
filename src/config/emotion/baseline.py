@@ -18,6 +18,8 @@ class EmotionBaselineModelConfig:
     
     ssl_model_str: str = 'WAVLM_LARGE'
     text_model_str: str = 'ROBERTA_BASE_ENCODER'
+    use_audio: bool = True
+    use_text: bool = True
     
     num_classes: int = 8
     d_model: int = 512
