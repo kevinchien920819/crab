@@ -330,23 +330,15 @@ class Controller:
 
             # 3. Multimodal Contrastive Losses (Integrated from snippet)
             if loss_name == 'mpcl_loss' and embeddings is not None:
-                # We expect criterions for audio, text, and fusion if needed,
-                # or we use the same criterion for all as in the snippet.
+                embedding_losses = [
+                    criterion(embedding, labels)
+                    for embedding in embeddings.values()
+                    if embedding is not None
+                ]
+                if not embedding_losses:
+                    continue
 
-                # Check if this specific criterion is meant for a specific embedding
-                # Otherwise, we calculate the combined contrastive loss as per snippet
-                l_speech_frame = criterion(embeddings['speech_frame_emb'], labels)
-                l_text_frame = criterion(embeddings['text_frame_emb'], labels)
-                l_speech_pooled = criterion(embeddings['speech_pooled_emb'], labels)
-                l_text_pooled = criterion(embeddings['text_pooled_emb'], labels)
-                l_fusion = criterion(embeddings['fusion_emb'], labels)
-
-                # Simple average with multiplier 2.0 as per snippet
-                combined_contrastive = 2.0 * (
-                    l_speech_frame + l_text_frame +
-                    l_speech_pooled + l_text_pooled +
-                    l_fusion
-                ) / 5
+                combined_contrastive = 2.0 * torch.stack(embedding_losses).mean()
 
                 total_loss = total_loss + combined_contrastive * weight
                 loss_list[idx] = combined_contrastive.item()

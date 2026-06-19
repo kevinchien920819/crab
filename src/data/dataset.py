@@ -1,5 +1,6 @@
 import os
 import pickle
+from dataclasses import fields
 from pathlib import Path
 
 import numpy as np
@@ -9,9 +10,51 @@ import torchaudio
 from tqdm import tqdm
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
-from .dataclass import Batch, Duration, Sample
+from .dataclass import ASVspoof5Cache, Batch, Duration, Sample
 from .utils import to_frame_idx_list
 from torchaudio.datasets import IEMOCAP
+
+ASVSPOOF5_CACHE_LIST_FIELDS = {
+    'starttime_word',
+    'endtime_word',
+    'duration_word',
+    'starttime_syllable',
+    'endtime_syllable',
+    'duration_syllable',
+    'starttime_phoneme',
+    'endtime_phoneme',
+    'duration_phoneme',
+    'starttime_vowel',
+    'endtime_vowel',
+    'duration_vowel',
+    'starttime_consonant',
+    'endtime_consonant',
+    'duration_consonant',
+    'devi_mu_syllable',
+    'mu_diff_syllable',
+    'devi_mu_vowel',
+    'mu_diff_vowel',
+    'devi_mu_consonant',
+    'mu_diff_consonant',
+}
+ASVSPOOF5_CACHE_INT_FIELDS = {
+    'label',
+    'word_count',
+    'syllable_count',
+    'phoneme_count',
+    'vowel_count',
+}
+ASVSPOOF5_CACHE_FLOAT_FIELDS = {
+    'starttime_sentence',
+    'endtime_sentence',
+    'duration_sentence',
+    'nPVI_syllable',
+    'nPVI_vowel',
+    'nPVI_consonant',
+}
+ASVSPOOF5_PRECOMPUTED_SOURCES = {'syllable', 'vowel', 'consonant'}
+
+
 class EmotionDataset(Dataset):
     def __init__(self, tokenizer=None, text_max_len: int = 128):
         """Initialize an emotion dataset with optional text tokenization."""
@@ -376,6 +419,169 @@ class DeepfakeDataset(Dataset):
         self.is_labeled = False
         self.downsample_factor = downsample_factor
 
+    @staticmethod
+    def _parse_float_list(value) -> list[float]:
+        """Parse CSV list fields stored as comma-separated strings."""
+        if value is None:
+            return []
+        if isinstance(value, np.ndarray):
+            return [float(item) for item in value.tolist()]
+        if isinstance(value, list):
+            return [float(item) for item in value]
+
+        text = str(value).strip().strip('[]')
+        if not text or text == '-':
+            return []
+        return [float(item.strip()) for item in text.split(',') if item.strip()]
+
+    @staticmethod
+    def _parse_int(value, default: int = 0) -> int:
+        if isinstance(value, (list, tuple, np.ndarray)):
+            if len(value) == 0:
+                return default
+            value = value[0]
+        if value is None or str(value).strip() in {'', '-'}:
+            return default
+        return int(float(value))
+
+    @staticmethod
+    def _parse_float(value, default: float = 0.0) -> float:
+        if isinstance(value, (list, tuple, np.ndarray)):
+            if len(value) == 0:
+                return default
+            value = value[0]
+        if value is None or str(value).strip() in {'', '-'}:
+            return default
+        return float(value)
+
+    def _asvspoof5_cache_from_row(self, row: dict) -> ASVspoof5Cache:
+        """Convert one ASVspoof5 rhythm CSV row to a typed cache item."""
+        values = {}
+        for field in fields(ASVspoof5Cache):
+            value = row.get(field.name)
+            if field.name in ASVSPOOF5_CACHE_LIST_FIELDS:
+                values[field.name] = self._parse_float_list(value)
+            elif field.name in ASVSPOOF5_CACHE_INT_FIELDS:
+                default = -1 if field.name == 'label' else 0
+                values[field.name] = self._parse_int(value, default=default)
+            elif field.name in ASVSPOOF5_CACHE_FLOAT_FIELDS:
+                values[field.name] = self._parse_float(value)
+            else:
+                values[field.name] = '' if value is None else str(value)
+        return ASVspoof5Cache(**values)
+
+    def _asvspoof5_cache_from_object(self, item) -> ASVspoof5Cache:
+        """Convert one pickle payload item into ASVspoof5Cache."""
+        if isinstance(item, ASVspoof5Cache):
+            return item
+        if isinstance(item, dict):
+            return self._asvspoof5_cache_from_row(item)
+        if hasattr(item, '__dict__'):
+            return self._asvspoof5_cache_from_row(vars(item))
+        raise TypeError(f'Unsupported ASVspoof5 cache item type: {type(item).__name__}')
+
+    def _iter_asvspoof5_cache_payload(self, payload):
+        """Yield row-like items from common pickle payload shapes."""
+        if isinstance(payload, pl.DataFrame):
+            yield from payload.iter_rows(named=True)
+            return
+
+        if isinstance(payload, dict):
+            values = list(payload.values())
+            if values and all(isinstance(value, (list, tuple, np.ndarray)) for value in values):
+                lengths = {len(value) for value in values}
+                if len(lengths) == 1:
+                    for index in range(lengths.pop()):
+                        yield {key: value[index] for key, value in payload.items()}
+                    return
+            yield payload
+            return
+
+        if isinstance(payload, (list, tuple)):
+            yield from payload
+            return
+
+        if hasattr(payload, 'to_dict'):
+            try:
+                records = payload.to_dict(orient='records')
+            except TypeError:
+                records = payload.to_dict()
+            if isinstance(records, list):
+                yield from records
+                return
+            if isinstance(records, dict):
+                yield from self._iter_asvspoof5_cache_payload(records)
+                return
+
+        raise TypeError(f'Unsupported ASVspoof5 cache payload type: {type(payload).__name__}')
+
+    def _resolve_asvspoof5_flac_path(
+        self,
+        cache_item: ASVspoof5Cache,
+        dataset_path: Path,
+        flac_dir: Path,
+    ) -> Path:
+        """Resolve ASVspoof5 audio path from the configured dataset root or CSV filepath."""
+        flac_name = Path(cache_item.flac_file_name).name
+        candidates = [flac_dir / flac_name] if flac_name else []
+
+        csv_path = Path(cache_item.filepath)
+        if str(csv_path):
+            if csv_path.is_absolute():
+                candidates.append(csv_path)
+            else:
+                candidates.extend([dataset_path / csv_path, dataset_path.parent / csv_path])
+                parts = csv_path.parts
+                if 'ASVspoof5' in parts:
+                    index = parts.index('ASVspoof5')
+                    candidates.append(dataset_path / Path(*parts[index:]))
+                    if index + 1 < len(parts):
+                        candidates.append(dataset_path / 'ASVspoof5' / Path(*parts[index + 1:]))
+
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return candidates[0]
+
+    def _load_asvspoof5_cache_samples(
+        self,
+        cache_path: Path,
+        dataset_path: Path,
+        flac_dir: Path,
+    ) -> list[Sample]:
+        """Load ASVspoof5 samples from the precomputed rhythm cache pkl or CSV."""
+        if cache_path.suffix == '.pkl':
+            with cache_path.open('rb') as f:
+                payload = pickle.load(f)
+            cache_rows = list(self._iter_asvspoof5_cache_payload(payload))
+        else:
+            cache_df = pl.read_csv(cache_path)
+            cache_rows = list(cache_df.iter_rows(named=True))
+
+        samples = []
+        for row in tqdm(
+            cache_rows,
+            total=len(cache_rows),
+            desc=f'Loading ASVspoof5 cache {cache_path.name}',
+        ):
+            cache_item = self._asvspoof5_cache_from_object(row)
+            flac_path = self._resolve_asvspoof5_flac_path(cache_item, dataset_path, flac_dir)
+            if not flac_path.exists():
+                raise FileNotFoundError(f'Missing audio file: {flac_path}')
+
+            filename = Path(cache_item.flac_file_name).stem
+            samples.append(
+                Sample(
+                    filename=filename,
+                    path=str(flac_path),
+                    length=0,
+                    deepfake_label=cache_item.label,
+                    sentence=cache_item.content_sentence,
+                    asvspoof5_cache=cache_item,
+                )
+            )
+        return samples
+
     def preload_asvspoof(self, dataset_path: Path, year = '2019_LA', subset_list: list[str] = ['train'], use_duration: bool = False):
         # subset_list: ['train', 'dev', 'eval']
         """Preload ASVspoof metadata and optional duration features into samples."""
@@ -391,7 +597,10 @@ class DeepfakeDataset(Dataset):
         asvspoof_str = f'ASVspoof{year_prefix}'
 
         subset_tag = '-'.join(sorted(subset_list))
-        duration_tag = 'with_duration' if self.use_duration else 'no_duration'
+        if year == '5' and self.use_duration:
+            duration_tag = 'with_asvspoof5_cache'
+        else:
+            duration_tag = 'with_duration' if self.use_duration else 'no_duration'
         cache_path = dataset_path / asvspoof_str / f'cache_{year}_{subset_tag}_{duration_tag}_ds{self.downsample_factor}.pkl'
 
         if cache_path.exists():
@@ -425,6 +634,11 @@ class DeepfakeDataset(Dataset):
             elif year == '5':
                 label_txt_path = dataset_path / asvspoof_str / f'ASVspoof_cm_protocols' / f'ASVspoof{year_dot}.{subset}.txt'
             duration_csv_path = dataset_path / asvspoof_str / f'ASVspoof{year}_csv' / f'ASVspoof{year_dot}.{subset}.csv'
+
+            if year == '5' and self.use_duration:
+                cache_path = dataset_path / asvspoof_str / f'cache_ASVspoof5_{subset}.pkl'
+                data.extend(self._load_asvspoof5_cache_samples(cache_path, dataset_path, flac_dir))
+                continue
 
             if self.use_duration:
                 self.duration_df = pl.read_csv(duration_csv_path)
@@ -553,8 +767,11 @@ class DeepfakeDataset(Dataset):
                 deepfake_label  = sample.deepfake_label,
                 utt_data        = sample.utt_data,
                 word_data       = sample.word_data,
+                syllable_data   = sample.syllable_data,
                 vowel_data      = sample.vowel_data,
                 consonant_data  = sample.consonant_data,
+                sentence        = sample.sentence,
+                asvspoof5_cache = getattr(sample, 'asvspoof5_cache', None),
             )
         except Exception as e:
             print(f"[Dataset] Error loading file: {sample.path}")
@@ -589,65 +806,179 @@ class DeepfakeDataset(Dataset):
         lengths = [len(v) for v in x]
         return pad_sequence(x, batch_first=True, padding_value=padding_value), torch.tensor(lengths, dtype=torch.int32)
 
+    @staticmethod
+    def _duration_devi(duration: torch.Tensor) -> torch.Tensor:
+        return (duration - duration.mean()) if len(duration) > 0 else torch.zeros_like(duration)
+
+    @staticmethod
+    def _duration_mu_diff(duration: torch.Tensor) -> torch.Tensor:
+        if len(duration) <= 1:
+            return torch.zeros_like(duration)
+        npvi = (((duration[:-1] - duration[1:]) / ((duration[:-1] + duration[1:]) / 2)).abs().sum() / (len(duration) - 1))
+        return torch.full_like(duration, npvi)
+
+    @staticmethod
+    def _pad_interval_sequences(sequences: list[torch.Tensor], dtype, padding_value=-1.0) -> torch.Tensor:
+        tensors = [item.to(dtype=dtype) for item in sequences]
+        return pad_sequence(tensors, batch_first=True, padding_value=padding_value)
+
+    def _asvspoof5_cache_source_tensors(
+        self,
+        batch: list[Sample],
+        source: str,
+        max_time_sec: float,
+    ) -> dict[str, torch.Tensor]:
+        """Build padded Batch tensors for one ASVspoof5 rhythm source from cache rows."""
+        duration_list = []
+        devi_list = []
+        mu_diff_list = []
+        sid_list = []
+        has_precomputed_rhythm = source in ASVSPOOF5_PRECOMPUTED_SOURCES
+
+        for item in batch:
+            cache_item = getattr(item, 'asvspoof5_cache', None)
+            if cache_item is None:
+                raise ValueError('ASVspoof5 cache batch contains a sample without asvspoof5_cache.')
+
+            start = torch.as_tensor(getattr(cache_item, f'starttime_{source}', []), dtype=torch.float32)
+            end = torch.as_tensor(getattr(cache_item, f'endtime_{source}', []), dtype=torch.float32)
+            duration = torch.as_tensor(getattr(cache_item, f'duration_{source}', []), dtype=torch.float32)
+            tensors = [start, end, duration]
+
+            devi = mu_diff = None
+            if has_precomputed_rhythm:
+                devi = torch.as_tensor(getattr(cache_item, f'devi_mu_{source}', []), dtype=torch.float32)
+                mu_diff = torch.as_tensor(getattr(cache_item, f'mu_diff_{source}', []), dtype=torch.float32)
+                tensors.extend([devi, mu_diff])
+
+            interval_len = min((tensor.numel() for tensor in tensors), default=0)
+            if interval_len == 0:
+                duration_list.append(torch.tensor([], dtype=torch.float32))
+                devi_list.append(torch.tensor([], dtype=torch.float32))
+                mu_diff_list.append(torch.tensor([], dtype=torch.float32))
+                sid_list.append(torch.tensor([], dtype=torch.long))
+                continue
+
+            start = start[:interval_len]
+            end = end[:interval_len]
+            duration = duration[:interval_len]
+            valid = end <= max_time_sec
+            duration = duration[valid]
+            sid = torch.floor(start[valid] * self.sample_rate / self.downsample_factor).to(torch.long)
+
+            if has_precomputed_rhythm:
+                source_devi = devi[:interval_len][valid]
+                source_mu_diff = mu_diff[:interval_len][valid]
+            else:
+                source_devi = self._duration_devi(duration)
+                source_mu_diff = self._duration_mu_diff(duration)
+
+            duration_list.append(duration)
+            devi_list.append(source_devi)
+            mu_diff_list.append(source_mu_diff)
+            sid_list.append(sid)
+
+        return {
+            f'{source}_d': self._pad_interval_sequences(duration_list, torch.float32),
+            f'{source}_devi': self._pad_interval_sequences(devi_list, torch.float32),
+            f'{source}_mu_diff': self._pad_interval_sequences(mu_diff_list, torch.float32),
+            f'{source}_sid': self._pad_interval_sequences(sid_list, torch.long),
+        }
+
+    def _collate_asvspoof5_cache_features(
+        self,
+        batch: list[Sample],
+        max_time_sec: float,
+    ) -> dict[str, torch.Tensor]:
+        """Convert parsed ASVspoof5Cache rows directly into Batch rhythm tensors."""
+        features = {}
+        for source in ['word', 'syllable', 'vowel', 'consonant']:
+            features.update(self._asvspoof5_cache_source_tensors(batch, source, max_time_sec))
+        return features
+
     def collate_fn_padded(self, batch: list[Sample]) -> Batch:
         """Collate deepfake samples into a padded Batch with optional duration fields."""
         wavform, length = self._pad_batch(batch, 'wavform')
 
-        word_d = word_sid = None
+        word_d = word_sid = word_devi = word_mu_diff = None
+        syllable_d = syllable_sid = syllable_devi = syllable_mu_diff = None
         vowel_d = vowel_sid = vowel_devi = vowel_mu_diff = None
         consonant_d = consonant_sid = consonant_devi = consonant_mu_diff = None
         if self.use_duration:
             max_len = length.max().item() # token length
             max_time_sec = max_len / self.sample_rate
 
-            word_sid = [torch.as_tensor(item.word_data.sid[item.word_data.et <= (max_time_sec)]) for item in batch]
-            word_sid = pad_sequence(word_sid, batch_first=True, padding_value=-1.0)
+            if all(getattr(item, 'asvspoof5_cache', None) is not None for item in batch):
+                cache_features = self._collate_asvspoof5_cache_features(batch, max_time_sec)
+                word_d = cache_features['word_d']
+                word_devi = cache_features['word_devi']
+                word_mu_diff = cache_features['word_mu_diff']
+                word_sid = cache_features['word_sid']
+                syllable_d = cache_features['syllable_d']
+                syllable_devi = cache_features['syllable_devi']
+                syllable_mu_diff = cache_features['syllable_mu_diff']
+                syllable_sid = cache_features['syllable_sid']
+                vowel_d = cache_features['vowel_d']
+                vowel_devi = cache_features['vowel_devi']
+                vowel_mu_diff = cache_features['vowel_mu_diff']
+                vowel_sid = cache_features['vowel_sid']
+                consonant_d = cache_features['consonant_d']
+                consonant_devi = cache_features['consonant_devi']
+                consonant_mu_diff = cache_features['consonant_mu_diff']
+                consonant_sid = cache_features['consonant_sid']
+            else:
+                word_sid = [torch.as_tensor(item.word_data.sid[item.word_data.et <= (max_time_sec)]) for item in batch]
+                word_sid = pad_sequence(word_sid, batch_first=True, padding_value=-1.0)
 
-            word_d = [torch.as_tensor(item.word_data.d[item.word_data.et <= (max_time_sec)], dtype=torch.float32) for item in batch]
-            word_d = pad_sequence(word_d, batch_first=True, padding_value=-1.0)
+                word_d = [torch.as_tensor(item.word_data.d[item.word_data.et <= (max_time_sec)], dtype=torch.float32) for item in batch]
+                word_devi = [self._duration_devi(d) for d in word_d]
+                word_mu_diff = [self._duration_mu_diff(d) for d in word_d]
 
-            vowel_sid = [
-                torch.as_tensor(item.vowel_data.sid[item.vowel_data.et <= (max_time_sec)])
-                if (item.vowel_data is not None and item.vowel_data.et is not None)
-                else torch.tensor([], dtype=torch.long)
-                for item in batch
-            ]
-            vowel_d = [
-                torch.as_tensor(item.vowel_data.d[item.vowel_data.et <= max_time_sec], dtype=torch.float32)
-                if (item.vowel_data is not None and item.vowel_data.et is not None)
-                else torch.tensor([], dtype=torch.float32)
-                for item in batch
-            ]
+                word_d = pad_sequence(word_d, batch_first=True, padding_value=-1.0)
+                word_devi = pad_sequence(word_devi, batch_first=True, padding_value=-1.0)
+                word_mu_diff = pad_sequence(word_mu_diff, batch_first=True, padding_value=-1.0)
 
-            # vowel_d = [torch.as_tensor(item.vowel_data.d[item.vowel_data.et <= (max_time_sec)], dtype=torch.float32)for item in batch]
-            vowel_devi = [(d - d.mean()) if len(d) > 0 else torch.zeros_like(d) for d in vowel_d]
-            vowel_mu_diff = [torch.full_like(d, (((d[:-1] - d[1:]) / ((d[:-1] + d[1:]) / 2)).abs().sum() / (len(d)-1) ) if len(d) > 1 else 0.0) for d in vowel_d]
+                vowel_sid = [
+                    torch.as_tensor(item.vowel_data.sid[item.vowel_data.et <= (max_time_sec)])
+                    if (item.vowel_data is not None and item.vowel_data.et is not None)
+                    else torch.tensor([], dtype=torch.long)
+                    for item in batch
+                ]
+                vowel_d = [
+                    torch.as_tensor(item.vowel_data.d[item.vowel_data.et <= max_time_sec], dtype=torch.float32)
+                    if (item.vowel_data is not None and item.vowel_data.et is not None)
+                    else torch.tensor([], dtype=torch.float32)
+                    for item in batch
+                ]
 
-            vowel_sid = pad_sequence(vowel_sid, batch_first=True, padding_value=-1.0)
-            vowel_d = pad_sequence(vowel_d,batch_first=True, padding_value=-1.0)
-            vowel_devi = pad_sequence(vowel_devi,batch_first=True, padding_value=-1.0)
-            vowel_mu_diff = pad_sequence(vowel_mu_diff,batch_first=True, padding_value=-1.0)
+                vowel_devi = [self._duration_devi(d) for d in vowel_d]
+                vowel_mu_diff = [self._duration_mu_diff(d) for d in vowel_d]
 
-            consonant_sid = [
-                torch.as_tensor(item.consonant_data.sid[item.consonant_data.et <= (max_time_sec)])
-                if (item.consonant_data is not None and item.consonant_data.et is not None)
-                else torch.tensor([], dtype=torch.long)
-                for item in batch
-            ]
-            consonant_d = [
-                torch.as_tensor(item.consonant_data.d[item.consonant_data.et <= max_time_sec], dtype=torch.float32)
-                if (item.consonant_data is not None and item.consonant_data.et is not None)
-                else torch.tensor([], dtype=torch.float32)
-                for item in batch
-            ]
+                vowel_sid = pad_sequence(vowel_sid, batch_first=True, padding_value=-1.0)
+                vowel_d = pad_sequence(vowel_d,batch_first=True, padding_value=-1.0)
+                vowel_devi = pad_sequence(vowel_devi,batch_first=True, padding_value=-1.0)
+                vowel_mu_diff = pad_sequence(vowel_mu_diff,batch_first=True, padding_value=-1.0)
 
-            consonant_devi = [(d - d.mean()) if len(d) > 0 else torch.zeros_like(d) for d in consonant_d]
-            consonant_mu_diff = [torch.full_like(d, (((d[:-1] - d[1:]) / ((d[:-1] + d[1:]) / 2)).abs().sum() / (len(d)-1) ) if len(d) > 1 else 0.0) for d in consonant_d]
+                consonant_sid = [
+                    torch.as_tensor(item.consonant_data.sid[item.consonant_data.et <= (max_time_sec)])
+                    if (item.consonant_data is not None and item.consonant_data.et is not None)
+                    else torch.tensor([], dtype=torch.long)
+                    for item in batch
+                ]
+                consonant_d = [
+                    torch.as_tensor(item.consonant_data.d[item.consonant_data.et <= max_time_sec], dtype=torch.float32)
+                    if (item.consonant_data is not None and item.consonant_data.et is not None)
+                    else torch.tensor([], dtype=torch.float32)
+                    for item in batch
+                ]
 
-            consonant_sid = pad_sequence(consonant_sid, batch_first=True, padding_value=-1.0)
-            consonant_d = pad_sequence(consonant_d,batch_first=True, padding_value=-1.0)
-            consonant_devi = pad_sequence(consonant_devi,batch_first=True, padding_value=-1.0)
-            consonant_mu_diff = pad_sequence(consonant_mu_diff,batch_first=True, padding_value=-1.0)
+                consonant_devi = [self._duration_devi(d) for d in consonant_d]
+                consonant_mu_diff = [self._duration_mu_diff(d) for d in consonant_d]
+
+                consonant_sid = pad_sequence(consonant_sid, batch_first=True, padding_value=-1.0)
+                consonant_d = pad_sequence(consonant_d,batch_first=True, padding_value=-1.0)
+                consonant_devi = pad_sequence(consonant_devi,batch_first=True, padding_value=-1.0)
+                consonant_mu_diff = pad_sequence(consonant_mu_diff,batch_first=True, padding_value=-1.0)
 
             # print("\n--- Batch Duration Info ---")
             # for i, sample in enumerate(batch):
@@ -665,19 +996,26 @@ class DeepfakeDataset(Dataset):
             # for deepfake detection
             deepfake_labels = torch.tensor([item.deepfake_label for item in batch], dtype=torch.long)    if self.is_labeled else None,
 
-            word_d          = word_d,
+            word_d              = word_d,
+            word_devi           = word_devi,
+            word_mu_diff        = word_mu_diff,
 
-            vowel_d         = vowel_d,
-            vowel_devi      = vowel_devi,
-            vowel_mu_diff   = vowel_mu_diff,
+            syllable_d          = syllable_d,
+            syllable_devi       = syllable_devi,
+            syllable_mu_diff    = syllable_mu_diff,
 
-            consonant_d     = consonant_d,
-            consonant_devi  = consonant_devi,
-            consonant_mu_diff = consonant_mu_diff,
+            vowel_d             = vowel_d,
+            vowel_devi          = vowel_devi,
+            vowel_mu_diff       = vowel_mu_diff,
 
-            word_sid        = word_sid,
-            vowel_sid       = vowel_sid,
-            consonant_sid   = consonant_sid,
+            consonant_d         = consonant_d,
+            consonant_devi      = consonant_devi,
+            consonant_mu_diff   = consonant_mu_diff,
+
+            word_sid            = word_sid,
+            syllable_sid        = syllable_sid,
+            vowel_sid           = vowel_sid,
+            consonant_sid       = consonant_sid,
         )
 
 
