@@ -96,7 +96,7 @@ class SSLModel(nn.Module):
             return ssl_feat, feat_length
 
         attention_mask = self._length_to_attention_mask(waveform, length)
-
+        if self.backend == 'huggingface':
             outputs = self.model(
                 input_values=waveform,
                 attention_mask=attention_mask,
