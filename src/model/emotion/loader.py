@@ -4,12 +4,11 @@ from typing import Union
 import torch
 from config.emotion.baseline import EmotionBaselineConfig
 
-from src.model.emotion import models as ModelModule
+from . import models as ModelModule
 
 def load_model(logger: logging.Logger, cfg: EmotionBaselineConfig) -> torch.nn.Module:
     """Instantiate and optionally restore the configured emotion model."""
-    model_class = getattr(ModelModule, cfg.model.name)
-    model: torch.nn.Module = model_class(cfg=cfg.model)
+    model: torch.nn.Module = ModelModule.build_model(cfg.model)
 
     logger.info(f'Load Model: \n{model}')
 

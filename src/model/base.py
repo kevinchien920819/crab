@@ -1,51 +1,41 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torchaudio import pipelines
-from transformers import AutoModel, AutoTokenizer
+from torchaudio.pipelines import Wav2Vec2Bundle
+from transformers import AutoModel, WavLMModel
 
-from dataclasses import dataclass
-from typing import Optional
-from config.emotion.baseline import EmotionBaselineModelConfig
 from data.dataclass import Batch
-
+from .embedding import PositionalEncoding
 
 
 class SSLModel(nn.Module):
-    HF_MODEL_MAP = {
-        "WAVLM_BASE": "microsoft/wavlm-base",
-        "WAVLM_BASE_PLUS": "microsoft/wavlm-base-plus",
-        "WAVLM_LARGE": "microsoft/wavlm-large",
-        "WAV2VEC2_BASE": "facebook/wav2vec2-base",
-        "WAV2VEC2_LARGE": "facebook/wav2vec2-large",
-        "WAV2VEC2_LARGE_LV60K": "facebook/wav2vec2-large-lv60",
-        "WAV2VEC2_XLSR53": "facebook/wav2vec2-large-xlsr-53",
-        "WAV2VEC2_XLSR_300M": "facebook/wav2vec2-xls-r-300m",
-        "WAV2VEC2_XLSR_1B": "facebook/wav2vec2-xls-r-1b",
-        "WAV2VEC2_XLSR_2B": "facebook/wav2vec2-xls-r-2b",
-        "HUBERT_BASE": "facebook/hubert-base-ls960",
-        "HUBERT_LARGE": "facebook/hubert-large-ll60k",
-        "HUBERT_XLARGE": "facebook/hubert-xlarge-ll60k",
-        "HUBERT_ASR_LARGE": "facebook/hubert-large-ls960-ft",
-        "HUBERT_ASR_XLARGE": "facebook/hubert-xlarge-ls960-ft",
-    }
-
-    def __init__(self, cfg: EmotionBaselineModelConfig):
+    def __init__(self, cfg):
         """Initialize the speech SSL encoder from torchaudio or Hugging Face backends."""
         super().__init__()
-        self.ssl_model_str = cfg.ssl_model_str
-        self.ssl_model_key = cfg.ssl_model_str.upper()
-        self.ssl_bundle = getattr(pipelines, self.ssl_model_key, None)
-        self.use_hf_backend = self.ssl_bundle is None or 'WAVLM' in self.ssl_model_key
+        bundle: Wav2Vec2Bundle = getattr(pipelines, cfg.ssl_model_str)
+        self.is_wavlm = 'WAVLM' in cfg.ssl_model_str.upper()
+        model_map = {
+            "WAVLM_BASE": "microsoft/wavlm-base",
+            "WAVLM_LARGE": "microsoft/wavlm-large",
+            "WAV2VEC2_BASE": "facebook/wav2vec2-base",
+            "WAV2VEC2_LARGE": "facebook/wav2vec2-large",
+        }
+
+        hf_model_name = model_map.get(cfg.ssl_model_str, cfg.ssl_model_str)
+
+        if self.is_wavlm:
+            self.model = WavLMModel.from_pretrained(hf_model_name)
+            self.ssl_bundle = bundle
+            self.backend = 'huggingface'
 
         if self.use_hf_backend:
             hf_model_name = self.HF_MODEL_MAP.get(self.ssl_model_key, cfg.ssl_model_str)
             self.model = AutoModel.from_pretrained(hf_model_name)
             self.output_dim = self.model.config.hidden_size
         else:
-            self.model = self.ssl_bundle.get_model()
-            self.output_dim = self.ssl_bundle._params['encoder_embed_dim']
+            self.model = bundle.get_model()
+            self.ssl_bundle = bundle
+            self.backend = 'torchaudio'
 
     def _length_to_attention_mask(self, waveform, length):
         """
@@ -94,8 +84,18 @@ class SSLModel(nn.Module):
             ssl_feat: [B, T_feat, hidden_dim]
             feat_length: [B]
         """
-        if self.use_hf_backend:
-            attention_mask = self._length_to_attention_mask(waveform, length)
+        if self.backend == 'torchaudio':
+            ssl_feat, feat_length = self.model(waveform, length)
+            if feat_length is None:
+                feat_length = torch.full(
+                    size=(waveform.size(0),),
+                    fill_value=ssl_feat.size(1),
+                    dtype=torch.long,
+                    device=waveform.device,
+                )
+            return ssl_feat, feat_length
+
+        attention_mask = self._length_to_attention_mask(waveform, length)
 
             outputs = self.model(
                 input_values=waveform,
@@ -121,8 +121,9 @@ class SSLModel(nn.Module):
             )
         return ssl_feat, feat_length
 
+
 class TextModel(nn.Module):
-    def __init__(self, cfg: EmotionBaselineModelConfig):
+    def __init__(self, cfg):
         """Initialize the transformer text encoder from a configured model name."""
         super().__init__()
         mapping = {
@@ -138,160 +139,117 @@ class TextModel(nn.Module):
         feat = text_outputs.last_hidden_state
         return feat
 
-class SERModel(nn.Module):
-    def __init__(self, cfg: EmotionBaselineModelConfig, ssl_dim: int, text_dim: int):
-        """Initialize multimodal projection, recurrent encoding, attention, and classifier layers."""
+
+class RhythmEncoder(nn.Module):
+    """Encode duration, Devil, and nPVI interval features into rhythm tokens."""
+
+    def __init__(self, cfg):
         super().__init__()
-        # Projections and Norms moved here from sub-models
-        self.speech_proj = nn.Linear(ssl_dim, cfg.d_model)
-        self.text_proj = nn.Linear(text_dim, cfg.d_model)
-        self.speech_norm = nn.LayerNorm(cfg.d_model)
-        self.text_norm = nn.LayerNorm(cfg.d_model)
+        self.sources = list(getattr(cfg, 'rhythm_sources', ['word', 'vowel', 'consonant']))
+        if not self.sources:
+            raise ValueError('rhythm_sources must contain at least one interval source.')
 
+        self.feature_proj = nn.Linear(3, cfg.d_model)
+        self.source_embedding = nn.Embedding(len(self.sources), cfg.d_model)
+        self.positional_encoding = PositionalEncoding(cfg.d_model)
+        self.norm = nn.LayerNorm(cfg.d_model)
         self.dropout = nn.Dropout(cfg.dropout)
+        if cfg.n_rhythm_encoder_layers > 0:
+            encoder_layer = nn.TransformerEncoderLayer(
+                d_model=cfg.d_model,
+                nhead=cfg.n_heads,
+                dim_feedforward=cfg.d_model * 4,
+                dropout=cfg.dropout,
+                activation='gelu',
+                batch_first=True,
+                norm_first=True,
+            )
+            self.encoder = nn.TransformerEncoder(
+                encoder_layer,
+                num_layers=cfg.n_rhythm_encoder_layers,
+            )
+        else:
+            self.encoder = nn.Identity()
 
-        self.speech_encoder = nn.GRU(
-            input_size=cfg.d_model,
-            hidden_size=cfg.d_model,
-            batch_first=True,
-            bidirectional=True,
+    def _required_feature(
+        self,
+        value: torch.Tensor | None,
+        source: str,
+        field_name: str,
+        reference: torch.Tensor,
+        mask: torch.Tensor,
+    ) -> torch.Tensor:
+        if value is None:
+            raise ValueError(f'Rhythm source "{source}" requires precomputed {field_name}.')
+        value = value.to(device=reference.device, dtype=reference.dtype)
+        return value.masked_fill(~mask, 0.0)
+
+    def _source_features(
+        self,
+        b: Batch,
+        source: str,
+    ) -> tuple[torch.Tensor, torch.Tensor] | None:
+        duration = getattr(b, f'{source}_d', None)
+        if duration is None or duration.numel() == 0:
+            return None
+
+        duration = duration.float()
+        mask = duration >= 0
+        if duration.size(1) == 0:
+            return None
+
+        clean_duration = duration.masked_fill(~mask, 0.0)
+        devil = self._required_feature(
+            getattr(b, f'{source}_devi', None),
+            source,
+            f'{source}_devi',
+            clean_duration,
+            mask,
         )
-        self.text_encoder = nn.GRU(
-            input_size=cfg.d_model,
-            hidden_size=cfg.d_model,
-            batch_first=True,
-            bidirectional=True,
+        npvi = self._required_feature(
+            getattr(b, f'{source}_mu_diff', None),
+            source,
+            f'{source}_mu_diff',
+            clean_duration,
+            mask,
         )
-        self.speech_attention = nn.MultiheadAttention(cfg.d_model * 2, 1, dropout=cfg.dropout, batch_first=True)
-        self.text_attention = nn.MultiheadAttention(cfg.d_model * 2, 1, dropout=cfg.dropout, batch_first=True)
+        features = torch.stack([clean_duration, devil, npvi], dim=-1)
+        return features, mask
 
-        self.speech_atten = nn.Linear(cfg.d_model * 2, 1)
-        self.text_atten = nn.Linear(cfg.d_model * 2, 1)
+    def forward(self, b: Batch) -> tuple[torch.Tensor, torch.Tensor]:
+        tokens = []
+        masks = []
+        for source_idx, source in enumerate(self.sources):
+            source_data = self._source_features(b, source)
+            if source_data is None:
+                continue
+            features, mask = source_data
+            x = self.feature_proj(features)
+            source_ids = torch.full(
+                (x.size(0), x.size(1)),
+                source_idx,
+                device=x.device,
+                dtype=torch.long,
+            )
+            x = x + self.source_embedding(source_ids)
+            x = self.positional_encoding(x)
+            tokens.append(x)
+            masks.append(mask)
 
-        # Contrastive embedding MLPs for frame-level features
-        self.speech_contrastive_mlp = nn.Sequential(
-            nn.Linear(cfg.d_model, cfg.d_model // 2),
-            nn.ReLU(),
-            nn.Linear(cfg.d_model // 2, cfg.d_contrastive)
-        )
+        if not tokens:
+            raise ValueError(
+                "Rhythm modality requires duration features. "
+                "Set use_duration: true for the ASVspoof dataset config and provide duration CSV files."
+            )
 
-        self.text_contrastive_mlp = nn.Sequential(
-            nn.Linear(cfg.d_model, cfg.d_model // 2),
-            nn.ReLU(),
-            nn.Linear(cfg.d_model // 2, cfg.d_contrastive)
-        )
+        x = torch.cat(tokens, dim=1)
+        mask = torch.cat(masks, dim=1)
+        if not mask.any(dim=1).all():
+            raise ValueError('Every sample needs at least one valid rhythm interval.')
 
-        # Contrastive embedding MLPs for pooled features
-        self.speech_pooled_contrastive_mlp = nn.Sequential(
-            nn.Linear(cfg.d_model * 2, cfg.d_model),
-            nn.ReLU(),
-            nn.Linear(cfg.d_model, cfg.d_contrastive)
-        )
-
-        self.text_pooled_contrastive_mlp = nn.Sequential(
-            nn.Linear(cfg.d_model * 2, cfg.d_model),
-            nn.ReLU(),
-            nn.Linear(cfg.d_model, cfg.d_contrastive)
-        )
-
-        # Fusion contrastive embedding MLP
-        self.fusion_contrastive_mlp = nn.Sequential(
-            nn.Linear(cfg.d_model, cfg.d_model),
-            nn.ReLU(),
-            nn.Linear(cfg.d_model, cfg.d_contrastive)
-        )
-
-
-        self.fusion_norm = nn.LayerNorm(cfg.d_model * 4)
-        self.classifier_proj = nn.Linear(cfg.d_model * 4, cfg.d_model)
-        self.classifier_activation = nn.ReLU()
-        self.classifier_dropout = nn.Dropout(cfg.dropout)
-        self.classifier = nn.Linear(cfg.d_model, cfg.num_classes)
-
-    def attention_pool(self, features, attention_layer, mask=None):
-        # features: [batch, seq_len, hidden]
-
-        # Calculate attention scores
-        """Pool sequence features with learned attention weights and an optional mask."""
-        attn_weights = attention_layer(features)  # [batch, seq_len, 1]
-
-        # Apply mask if provided
-        if mask is not None:
-            mask = mask.unsqueeze(-1)  # [batch, seq_len, 1]
-            attn_weights = attn_weights.masked_fill(mask == 0, -1e9)
-
-        attn_weights = F.softmax(attn_weights, dim=1)
-
-        # Apply attention
-        weighted_features = features * attn_weights
-        pooled = weighted_features.sum(dim=1)  # [batch, hidden]
-
-        return pooled
-
-    def forward(self, raw_speech_feat, raw_text_feat, b):
-        # Apply projections and norms first
-        """Fuse speech and text features and return logits, features, and optional embeddings."""
-        speech_feat = self.speech_norm(self.speech_proj(raw_speech_feat)) # [batch, seq_len, d_model]
-        text_feat = self.text_norm(self.text_proj(raw_text_feat)) # [batch, seq_len, d_model]
-
-        # Calculate valid lengths for GRU
-        # speech_key_padding_mask = ~b.audio_mask if b.audio_mask is not None else None
-        # if speech_key_padding_mask is not None and speech_key_padding_mask.size(1) != speech_feat.size(1):
-        #     speech_key_padding_mask = F.interpolate(speech_key_padding_mask.float().unsqueeze(1), size=speech_feat.size(1), mode='nearest').squeeze(1).bool()
-
-        # speech_lens = (~speech_key_padding_mask).sum(dim=1).clamp(min=1).cpu() if speech_key_padding_mask is not None else torch.full((speech_feat.size(0),), speech_feat.size(1))
-        # text_lens = b.text_mask.sum(dim=1).clamp(min=1).cpu() if b.text_mask is not None else torch.full((text_feat.size(0),), text_feat.size(1))
-
-        # Pack, GRU, then Unpack
-        # packed_speech = pack_padded_sequence(speech_feat, speech_lens, batch_first=True, enforce_sorted=False)
-        speech_x, _ = self.speech_encoder(speech_feat)
-        # speech_x, _ = pad_packed_sequence(speech_x, batch_first=True, total_length=speech_feat.size(1))
-
-        # packed_text = pack_padded_sequence(text_feat, text_lens, batch_first=True, enforce_sorted=False)
-        text_x, _ = self.text_encoder(text_feat)
-        # text_x, _ = pad_packed_sequence(text_x, batch_first=True, total_length=text_feat.size(1))
-
-        # MultiheadAttention
-        # text_key_padding_mask = ~b.text_mask if b.text_mask is not None else None
-        speech_attended, _ = self.speech_attention(query=speech_x, key=text_x, value=text_x)
-        text_attended, _ = self.text_attention(query=text_x, key=speech_x, value=speech_x)
-
-        speech_final = speech_x + speech_attended
-        text_final = text_x + text_attended
-
-        # Attention Pooling
-        # speech_pool_mask = b.audio_mask
-        # if speech_pool_mask is not None and speech_pool_mask.size(1) != speech_final.size(1):
-        #      speech_pool_mask = F.interpolate(speech_pool_mask.float().unsqueeze(1), size=speech_final.size(1), mode='nearest').squeeze(1).bool()
-
-        speech_pooled = self.attention_pool(speech_final, self.speech_atten)
-        text_pooled = self.attention_pool(text_final, self.text_atten)
-
-        # Fusion and Classifier
-        fusion_emb = torch.cat([speech_pooled, text_pooled], dim=-1)
-        fusion_emb = self.fusion_norm(fusion_emb)
-        fusion_emb = self.classifier_proj(fusion_emb)
-        x = self.classifier_activation(fusion_emb)
-        x = self.classifier_dropout(x)
-        logits = self.classifier(x)
-
-        if self.training:
-            # Compute contrastive embeddings
-            speech_frame_mean = speech_feat.mean(dim=1)
-            text_frame_mean = text_feat.mean(dim=1)
-            speech_contrastive_emb = self.speech_contrastive_mlp(speech_frame_mean)
-            text_contrastive_emb = self.text_contrastive_mlp(text_frame_mean)
-            speech_pooled_contrastive_emb = self.speech_pooled_contrastive_mlp(speech_pooled)
-            text_pooled_contrastive_emb = self.text_pooled_contrastive_mlp(text_pooled)
-            fusion_contrastive_emb = self.fusion_contrastive_mlp(fusion_emb)
-
-            embeddings = {
-                'speech_frame_emb': speech_contrastive_emb,
-                'text_frame_emb': text_contrastive_emb,
-                'speech_pooled_emb': speech_pooled_contrastive_emb,
-                'text_pooled_emb': text_pooled_contrastive_emb,
-                'fusion_emb': fusion_contrastive_emb
-            }
-
-            return logits, x, embeddings
-        return logits, x, None
+        x = self.dropout(self.norm(x))
+        if isinstance(self.encoder, nn.Identity):
+            x = self.encoder(x)
+        else:
+            x = self.encoder(x, src_key_padding_mask=~mask)
+        return x, mask
