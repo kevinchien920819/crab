@@ -30,14 +30,12 @@
 \setCJKmonofont{./fonts/kaiu/kaiu.ttf}
 
 % 頁面設定
+\setlength{\headheight}{14.5pt}
 \fancyhf{}
 \rfoot{\thepage}
 
-% 設置圖片路徑
-\graphicspath{{fig/}}
-
 % 標題樣式
-\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\section}{\large\bfseries}{\Roman{section}}{1em}{}
 \titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
 
 % 段落縮排
@@ -46,5 +44,5 @@
 \pagestyle{fancy}
 \fancyhf{}
 \rhead{June. 2026}
-\lhead{\textbf{FCU SLP}}
+\lhead{\textbf{Speech and Language Processing}}
 \rfoot{\thepage}

@@ -1,0 +1,204 @@
+\documentclass[12pt, a4paper]{article}
+\input{packages.tex}
+\input{settings.tex}
+
+\newcommand{\crab}{\textsc{Crab}}
+
+\begin{document}
+
+\begin{center}
+    \LARGE \textbf{\crab: Contrastive Representation and Multimodal Aligned Bottleneck using in Audio Deepfake Detection}\\[0.6em]
+    \large Speech and Language Processing Project Report\\
+    \large 簡子霖\\
+    \normalsize 逢甲大學資訊工程所\\
+    \vspace{0.4em}
+    \normalsize \texttt{M1406785@o365.fcu.edu.tw}
+\end{center}
+
+\vspace{0.8em}
+
+\section{Abstract}
+
+本研究實作 \crab，一套針對語音情緒辨識（speech emotion recognition, SER）與深偽語音偵測（audio deepfake detection）的研究型框架。
+系統以自監督語音模型（self-supervised learning, SSL）抽取聲學表徵，並結合 RoBERTa 文字編碼器擷取語意表徵，再透過投影層、雙向 GRU、跨模態注意力與注意力池化完成語音與文字融合。
+在情緒辨識任務中，框架支援 MELD、IEMOCAP 與 MSP-Podcast；在深偽語音偵測任務中，框架支援 ASVspoof2019、ASVspoof2021 與 ASVspoof5。
+訓練流程提供加權交叉熵、多正例對比式學習與 pairwise Gaussian loss 等目標函數，並以 UAR/WAR 或 EER/Act-DCF 作為任務對應評估指標。
+本文整理此專案的資料處理、模型設計、訓練策略與可重現實驗設定，作為後續大規模實驗與模型比較的基準文件。
+
+\noindent\textbf{關鍵字：}語音情緒辨識、深偽語音偵測、自監督學習、多模態融合、ASVspoof
+
+\section{INTRODUCTION}
+語音訊號同時包含語者狀態、語意內容、韻律與錄音環境等多層資訊。
+在情緒辨識任務中，模型需要從聲學線索與文字內容判斷說話者情緒；在深偽語音偵測任務中，模型則需要辨識語音是否由語音合成、聲音轉換或其他生成技術產生。
+兩者雖然任務目標不同，但皆仰賴穩健的語音表徵與有效的序列建模。
+
+近年 wav2vec 2.0、HuBERT 與 WavLM 等 SSL 語音模型已能從大量未標註語料中學得具泛化能力的表徵 \cite{baevski2020wav2vec2,hsu2021hubert,chen2022wavlm}。
+另一方面，RoBERTa 等預訓練語言模型能提供上下文化文字特徵 \cite{liu2019roberta}。
+因此，本專案將語音 SSL encoder 與文字 transformer encoder 作為前端特徵抽取器，並在任務特定的融合模組中學習聲學與語意資訊之間的互補關係。
+
+本專案的主要貢獻如下：
+\begin{enumerate}
+    \item 建立一套可由 YAML 設定檔控制的多任務語音框架，支援情緒辨識與深偽語音偵測。
+    \item 設計以 SSL 語音特徵與 RoBERTa 文字特徵為輸入的多模態融合模型，結合雙向 GRU、跨模態注意力與注意力池化。
+    \item 整合任務對應資料集、動態 batch sampler、混合精度訓練、checkpoint 管理與 WandB 紀錄。
+    \item 提供 SSL embedding 匯出與 t-SNE 後處理流程，便於分析不同訓練階段的表徵分布。
+\end{enumerate}
+
+\section{RELATED WORKS}
+\subsection{自監督語音表徵}
+wav2vec 2.0 透過遮罩潛在語音表徵與對比式學習，在少量標註資料下仍能取得強健語音表示 \cite{baevski2020wav2vec2}。
+HuBERT 以離線分群產生隱藏單元作為預測目標，將 BERT 式遮罩預測延伸到連續語音訊號 \cite{hsu2021hubert}。
+WavLM 進一步加入去噪與 gated relative position bias，強化非 ASR 語音任務的泛化能力 \cite{chen2022wavlm}。
+本專案的 `SSLModel' 同時支援 torchaudio pipeline 與 Hugging Face backend，可依設定選用 WavLM、wav2vec 2.0、HuBERT 或 XLS-R 系列模型。
+
+\subsection{多模態情緒辨識}
+MELD 提供多方對話中的文字、音訊與視覺資訊，並標註七類情緒與情感極性 \cite{poria2019meld}。
+IEMOCAP 則以雙人互動情境蒐集語音、文字、視覺與 motion capture 資料，是 SER 研究常用資料集 \cite{busso2008iemocap}。
+MSP-Podcast 以自然 podcast 語音建立大規模情緒語料，資料分布更接近真實場景 \cite{busso2025msppodcast}。
+相較於只使用單一模態，本專案在模型中同時保留音訊與文字路徑，並以跨模態注意力讓兩種序列特徵互相查詢。
+
+\subsection{深偽語音偵測}
+ASVspoof 系列挑戰提供合成語音、聲音轉換、重放攻擊與 deepfake speech 的公開評測資料與 protocol \cite{todisco2019asvspoof2019,yamagishi2021asvspoof2021,asvspoof5}。
+此類任務通常以 Equal Error Rate（EER）與 detection cost function 衡量系統在 bona fide 與 spoof speech 之間的決策能力。
+\crab 的 deepfake pipeline 以 ASVspoof protocol 載入標籤與 trial file，並可輸出官方評測格式的分數檔。
+
+\section{METHODOLOGY}
+\subsection{系統架構}
+圖像與影片模態雖可提升部分資料集的辨識能力，但本專案目前聚焦於音訊與文字兩種可穩定取得的模態。
+整體架構由三個主要模組組成：
+\begin{enumerate}
+    \item \textbf{Speech SSL encoder：}輸入 16 kHz waveform，輸出 frame-level speech representation。
+    \item \textbf{Text encoder：}輸入 tokenizer 產生的 token ID 與 attention mask，輸出 contextual text representation。
+    \item \textbf{SER fusion head：}將兩種模態投影到共同維度，進行序列建模、跨模態注意力、池化、融合與分類。
+\end{enumerate}
+
+令語音 SSL 輸出為 $A \in \mathbb{R}^{T_a \times d_a}$，文字 encoder 輸出為 $T \in \mathbb{R}^{T_t \times d_t}$。
+模型先以線性層投影至共同維度 $d$ 並進行 layer normalization：
+\begin{equation}
+    \tilde{A} = \mathrm{LN}(A W_a), \quad
+    \tilde{T} = \mathrm{LN}(T W_t).
+\end{equation}
+接著兩個雙向 GRU 分別建模語音與文字序列：
+\begin{equation}
+    H_a = \mathrm{BiGRU}_a(\tilde{A}), \quad
+    H_t = \mathrm{BiGRU}_t(\tilde{T}).
+\end{equation}
+跨模態注意力採用 multi-head attention 的 query-key-value 形式 \cite{vaswani2017attention}：
+\begin{equation}
+    C_a = \mathrm{MHA}(Q=H_a, K=H_t, V=H_t), \quad
+    C_t = \mathrm{MHA}(Q=H_t, K=H_a, V=H_a).
+\end{equation}
+最後以殘差連接形成 $F_a=H_a+C_a$ 與 $F_t=H_t+C_t$，再透過可學習注意力池化取得 utterance-level 向量：
+\begin{equation}
+    z_m = \sum_i \alpha_i F_{m,i}, \quad
+    \alpha_i = \mathrm{softmax}(w^\top F_{m,i}), \quad m \in \{a,t\}.
+\end{equation}
+兩個模態的池化向量串接後，經 layer normalization、線性投影、ReLU、dropout 與分類器輸出 logits。
+
+\subsection{訓練目標}
+分類任務的主要目標為交叉熵或加權交叉熵。
+對於類別不平衡的情緒資料，框架可由訓練集標籤統計自動估計 class weight：
+\begin{equation}
+    w_c = \frac{N}{K \cdot N_c},
+\end{equation}
+其中 $N$ 為訓練樣本數、$K$ 為類別數、$N_c$ 為類別 $c$ 的樣本數。
+
+為了讓同類樣本在表示空間中更接近，模型也支援 multi-positive contrastive loss。
+給定 batch embedding $e_i$ 與 label $y_i$，同 label 且非自身的樣本被視為 positive pair；loss 以 temperature $\tau$ 計算 normalized similarity，再對多個 positive 平均分配目標機率。
+此設計與多正例對比式學習的精神一致 \cite{tian2023stablerep}。
+此外，框架保留 pairwise Gaussian loss，可對成對 embedding 的歐氏距離加入額外約束。
+
+\subsection{資料前處理}
+所有音訊皆統一載入為單聲道 waveform，若取樣率不是 16 kHz 則重採樣至 16 kHz，並以 peak normalization 將振幅縮放到一致尺度。
+情緒資料若含文字 transcript，會使用 RoBERTa tokenizer 轉成固定長度 token 序列，目前上限為 128。
+batch collate 時會根據 waveform 長度補齊音訊，並產生 audio mask；文字則由 tokenizer 的 attention mask 標示有效 token。
+
+深偽語音資料依 ASVspoof protocol 讀取檔名與 bona fide/spoof 標籤。
+若設定啟用 duration features，dataset 也能載入口語單位、母音與子音時間長度資訊；不過目前主要模型路徑仍以 waveform SSL representation 為核心。
+
+\section{實驗設計}
+\subsection{資料集與標籤}
+表 \ref{tab:datasets} 整理目前程式支援的資料集與標籤設定。
+情緒辨識任務輸出多類別 label；深偽語音偵測任務輸出二元 label，其中 0 代表 bona fide，1 代表 spoof。
+
+\begin{table}[H]
+    \centering
+    \caption{專案支援資料集與任務設定}
+    \label{tab:datasets}
+    \small
+    \begin{tabular}{p{0.2\linewidth}p{0.2\linewidth}p{0.37\linewidth}p{0.13\linewidth}}
+        \toprule
+        資料集 & 任務 & 標籤設定 & 評估指標 \\
+        \midrule
+        MELD & 情緒辨識 & neutral, surprise, fear, sadness, joy, disgust, anger & UAR, WAR \\
+        IEMOCAP & 情緒辨識 & neutral, joy/happiness, anger, sadness & UAR, WAR \\
+        MSP-Podcast & 情緒辨識 & neutral, surprise, fear, sadness, joy, disgust, anger, other & UAR, WAR \\
+        ASVspoof2019/2021/5 & 深偽語音偵測 & bona fide, spoof & EER, Act-DCF \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{模型與最佳化設定}
+情緒辨識設定以 HuBERT Large 作為語音 encoder，RoBERTa Base 作為文字 encoder，融合模組隱藏維度 $d=512$，dropout 為 0.5。
+IEMOCAP 與 MSP-Podcast 設定使用 CosineAnnealingLR，並對 SSL encoder、text encoder 與 SER head 設定不同 learning rate；MELD 設定則使用 stepwise division scheduler。
+深偽語音偵測設定以 wav2vec 2.0 XLS-R 300M 作為語音 encoder，融合維度 $d=256$，主要使用交叉熵與 label smoothing；但目前 YAML 未明確覆寫文字模型與類別數，仍需在正式實驗前修正為純語音 head 或補齊文字輸入。
+表 \ref{tab:configs} 列出目前 YAML 設定檔中的主要實驗配置。
+
+\begin{table}[H]
+    \centering
+    \caption{主要實驗設定}
+    \label{tab:configs}
+    \small
+    \begin{tabular}{p{0.17\linewidth}p{0.2\linewidth}p{0.17\linewidth}p{0.17\linewidth}p{0.17\linewidth}}
+        \toprule
+        設定檔 & SSL / text model & Epoch & Batch size & Loss \\
+        \midrule
+        emotion/MELD & HuBERT Large / RoBERTa Base & 1 & 4/4/1 & WCE + MPCL \\
+        emotion/IEMOCAP & HuBERT Large / RoBERTa Base & 20 & 4/4/4 & WCE + MPCL \\
+        emotion/MSP\_Podcast & HuBERT Large / RoBERTa Base & 20 & 16/16/1 & WCE + MPCL \\
+        deepfake/baseline & XLS-R 300M / RoBERTa default & 32 & 16/32/32 & CE \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{訓練與評估流程}
+實驗由 `src/main.py' 讀取 `configs/' 中的 YAML 設定檔後啟動。
+訓練前會固定隨機種子、建立工作目錄、載入模型、統計參數量並建立 dataloader。
+訓練過程支援 fp16/bf16 混合精度、gradient accumulation、gradient clipping、scheduler step、checkpoint 儲存與 WandB 紀錄。
+對情緒辨識任務，最佳模型依 dev set UAR 選擇；對深偽語音偵測任務，最佳模型依 dev set EER 選擇。
+
+情緒辨識的評估輸出 WAR 與 UAR：
+\begin{equation}
+    \mathrm{WAR} = \frac{\sum_i \mathbb{I}(\hat{y}_i=y_i)}{N},
+    \quad
+    \mathrm{UAR} = \frac{1}{K}\sum_{c=1}^{K}
+    \frac{\sum_i \mathbb{I}(\hat{y}_i=c, y_i=c)}{\sum_i \mathbb{I}(y_i=c)}.
+\end{equation}
+深偽語音偵測則以 softmax spoof score 計算 EER，並在產生 `evaluation\_scores.txt' 後呼叫 ASVspoof 評測模組計算 minDCF、EER、CLLR 與 Act-DCF。
+
+\subsection{表徵分析}
+情緒模型提供 `extract\_ssl\_embedding' 介面，可在 epoch 0、best checkpoint 與最後一個 epoch 匯出 pooled SSL embeddings。
+匯出的 `.npz' 檔包含 embedding、label、emotion name、dataset、split、filename、frame length、stage 與 epoch 等欄位。
+後處理程式 `postprocess/main.py' 可對這些 embedding 進行 StandardScaler、PCA 與 t-SNE，並輸出互動式 HTML 圖與 CSV。
+此流程可用來比較模型微調前後，同一情緒類別是否形成更清楚的群聚。
+
+\section{討論}
+\subsection{架構優點}
+\crab 的模組化設計讓語音 SSL encoder、文字 encoder、融合 head、loss 與資料集設定彼此解耦。
+因此研究者可以在不重寫訓練流程的前提下替換 HuBERT、WavLM、wav2vec 2.0 或不同文字模型，也可以透過 YAML 設定調整 batch sampler、learning rate、loss 權重與 embedding export。
+跨模態 attention 的設計讓語音序列能查詢文字序列，文字序列也能回看語音線索，適合處理語意與語調都會影響判斷的情緒任務。
+
+\subsection{限制}
+目前深偽語音模型檔案沿用與情緒模型相近的融合 head，但 ASVspoof batch 並未預設提供文字 token；若要完全支援 audio-only deepfake pipeline，模型 forward path 應明確處理 `tokens' 與 `text\_mask' 為空的情況，或改為純語音分類 head。除此之外，`DeepfakeBaselineModelConfig' 的預設 `num\_classes' 為 8，而 ASVspoof 標籤是 bona fide/spoof 二元分類，因此正式訓練前應在 YAML 中明確設定 `num\_classes: 2' 或調整 dataclass 預設。
+此外，現有 repository 未保存可驗證的正式實驗分數，因此本文不回報測試集數值結果。
+後續應補上完整實驗紀錄、固定資料版本、checkpoint hash 與多組 seed 平均，才能形成可比較的 benchmark。
+
+\section{結論}
+本文整理並撰寫 \crab 專案的論文式報告。
+此框架以 SSL 語音模型與 RoBERTa 文字模型為基礎，透過雙向 GRU、跨模態 attention 與 attention pooling 建立多模態語音分類模型，並同時支援 SER 與 deepfake detection 的資料處理、訓練與評估流程。
+未來工作將聚焦於三個方向：第一，補齊 audio-only deepfake head，使 ASVspoof pipeline 與情緒 pipeline 更清楚分工；第二，加入正式實驗表格與 ablation study，比較 SSL encoder、文字模態、MPCL 與 sampler 的影響；第三，將 embedding visualization 與錯誤分析納入標準報告流程，以提升模型可解釋性。
+
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}
