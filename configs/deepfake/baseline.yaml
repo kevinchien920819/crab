@@ -16,16 +16,27 @@ general:
   testing_ckpt: default
   train: True
   eval: True
-  produce_evaluation_file: true
+  produce_evaluation_file: True
 
 model:
-  name: DeepfakeCrabModel
-  tag: v7
-  description: ''
+  name: DeepfakeAudioRhythmModel
+  tag: v1
+  description: 'Baseline for ADD task using Audio and Rhythm'
   ssl_model_str: WAV2VEC2_XLSR_300M
-  
+  use_audio: true
+  use_rhythm: true
+  rhythm_sources:
+  - syllable
+  - vowel
+  - consonant
+  num_classes: 2
   d_model: 256
+  d_contrastive: 128
+  n_heads: 4
   n_cls_encoder_layers: 4
+  n_rhythm_encoder_layers: 2
+  n_inter_encoder_layers: 1
+  dropout: 0.3
 
 solver:
   optimizer: AdamW
@@ -47,11 +58,14 @@ datasets:
   - name: ASVspoof5
     # dir: /home/poyu39/gitlab/fcu-slp/ssl-mamba/dataset
     dir: /home/icebird/01_proj/ssl-mamba/dataset
+    use_duration: true
   test_datasets:
   - name: ASVspoof2021_DF
     dir: /home/icebird/01_proj/ssl-mamba/dataset
+    use_duration: true
   - name: ASVspoof2021_LA
     dir: /home/icebird/01_proj/ssl-mamba/dataset
+    use_duration: true
 
 dataloader:
   name: Dataset

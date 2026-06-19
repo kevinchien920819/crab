@@ -23,6 +23,8 @@ model:
   description: ''
   ssl_model_str: WAVLM_LARGE
   text_model_str: ROBERTA_BASE_ENCODER
+  use_audio: true
+  use_text: true
   num_classes: 4
   d_model: 512
   d_contrastive: 512
