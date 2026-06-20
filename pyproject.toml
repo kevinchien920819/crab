@@ -21,4 +21,5 @@ dependencies = [
     "wandb",
     "line-bot-sdk",
     "isort",
+    "soundfile>=0.14.0",
 ]
