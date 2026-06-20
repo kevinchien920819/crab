@@ -1,19 +1,17 @@
-from .baseline import AudioRhythmFusionModel
 from .models import (
-    DeepfakeAudioRhythmModel,
-    DeepfakeBaseline,
-    DeepfakeBaselineModel,
-    DeepfakeCrabModel,
+    DeepfakeAudioRhythmGRUModel,
+    DeepfakeAudioRhythmTransformerModel,
+    DeepfakeAudioTextGRUModel,
+    DeepfakeAudioTextTransformerModel,
     ModelOutput,
     build_model,
 )
 
 __all__ = [
-    "DeepfakeBaseline",
-    "DeepfakeBaselineModel",
-    "DeepfakeAudioRhythmModel",
-    "DeepfakeCrabModel",
+    "DeepfakeAudioRhythmTransformerModel",
+    "DeepfakeAudioRhythmGRUModel",
+    "DeepfakeAudioTextTransformerModel",
+    "DeepfakeAudioTextGRUModel",
     "ModelOutput",
-    "AudioRhythmFusionModel",
     "build_model",
 ]

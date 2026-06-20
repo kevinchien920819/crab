@@ -12,7 +12,7 @@ from config.base import (
 
 @dataclass
 class DeepfakeBaselineModelConfig:
-    name: str = "DeepfakeBaseline"
+    name: str = "DeepfakeAudioRhythmTransformerModel"
     tag: str = "v1"
     description: str = ""
     
@@ -20,6 +20,7 @@ class DeepfakeBaselineModelConfig:
     text_model_str: str = 'ROBERTA_BASE_ENCODER'
     use_audio: bool = True
     use_rhythm: bool = False
+    use_text: bool = False
     rhythm_sources: list[str] = field(default_factory=lambda: ['word', 'vowel', 'consonant'])
     
     num_classes: int = 2

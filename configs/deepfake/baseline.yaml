@@ -19,7 +19,7 @@ general:
   produce_evaluation_file: True
 
 model:
-  name: DeepfakeAudioRhythmModel
+  name: DeepfakeAudioRhythmTransformerModel
   tag: v1
   description: 'Baseline for ADD task using Audio and Rhythm'
   ssl_model_str: WAV2VEC2_XLSR_300M

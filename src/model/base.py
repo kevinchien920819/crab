@@ -9,32 +9,29 @@ from .embedding import PositionalEncoding
 
 
 class SSLModel(nn.Module):
+    HF_MODEL_MAP = {
+        "WAVLM_BASE": "microsoft/wavlm-base",
+        "WAVLM_LARGE": "microsoft/wavlm-large",
+        "WAV2VEC2_BASE": "facebook/wav2vec2-base",
+        "WAV2VEC2_LARGE": "facebook/wav2vec2-large",
+    }
+
     def __init__(self, cfg):
         """Initialize the speech SSL encoder from torchaudio or Hugging Face backends."""
         super().__init__()
-        bundle: Wav2Vec2Bundle = getattr(pipelines, cfg.ssl_model_str)
-        self.is_wavlm = 'WAVLM' in cfg.ssl_model_str.upper()
-        model_map = {
-            "WAVLM_BASE": "microsoft/wavlm-base",
-            "WAVLM_LARGE": "microsoft/wavlm-large",
-            "WAV2VEC2_BASE": "facebook/wav2vec2-base",
-            "WAV2VEC2_LARGE": "facebook/wav2vec2-large",
-        }
-
-        hf_model_name = model_map.get(cfg.ssl_model_str, cfg.ssl_model_str)
-
-        if self.is_wavlm:
-            self.model = WavLMModel.from_pretrained(hf_model_name)
-            self.ssl_bundle = bundle
-            self.backend = 'huggingface'
+        self.ssl_model_key = cfg.ssl_model_str
+        self.ssl_bundle: Wav2Vec2Bundle | None = getattr(pipelines, self.ssl_model_key, None)
+        self.is_wavlm = 'WAVLM' in self.ssl_model_key.upper()
+        self.use_hf_backend = self.is_wavlm or self.ssl_bundle is None
 
         if self.use_hf_backend:
-            hf_model_name = self.HF_MODEL_MAP.get(self.ssl_model_key, cfg.ssl_model_str)
-            self.model = AutoModel.from_pretrained(hf_model_name)
+            hf_model_name = self.HF_MODEL_MAP.get(self.ssl_model_key, self.ssl_model_key)
+            self.model = WavLMModel.from_pretrained(hf_model_name) if self.is_wavlm else AutoModel.from_pretrained(hf_model_name)
             self.output_dim = self.model.config.hidden_size
+            self.backend = 'huggingface'
         else:
-            self.model = bundle.get_model()
-            self.ssl_bundle = bundle
+            self.model = self.ssl_bundle.get_model()
+            self.output_dim = self.ssl_bundle._params['encoder_embed_dim']
             self.backend = 'torchaudio'
 
     def _length_to_attention_mask(self, waveform, length):
