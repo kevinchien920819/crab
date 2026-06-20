@@ -3,6 +3,7 @@ from typing import Optional
 
 import torch
 from torch import nn
+from transformers import AutoTokenizer
 
 from config.deepfake.baseline import DeepfakeBaselineModelConfig
 from data.dataclass import Batch
@@ -79,6 +80,11 @@ class _DeepfakeFrontendFusionModel(nn.ModuleDict):
         self.use_audio = use_audio
         self.use_text = use_text
         self.use_rhythm = use_rhythm
+
+        if self.use_text:
+            self.text_bundle = AutoTokenizer.from_pretrained(
+                {'ROBERTA_BASE_ENCODER': 'roberta-base', 'ROBERTA_LARGE_ENCODER': 'roberta-large'}.get(cfg.text_model_str, cfg.text_model_str)
+            )
 
         if self.use_audio:
             self._freeze_ssl_feature_extractor()

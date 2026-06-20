@@ -413,11 +413,13 @@ class EmotionDataset(Dataset):
 
 
 class DeepfakeDataset(Dataset):
-    def __init__(self, downsample_factor: int = 320):
+    def __init__(self, downsample_factor: int = 320, tokenizer=None, text_max_len: int = 128):
         """Initialize a deepfake dataset and duration downsampling settings."""
         self.data: list[Sample] = []
         self.is_labeled = False
         self.downsample_factor = downsample_factor
+        self.tokenizer = tokenizer
+        self.text_max_len = text_max_len
 
     @staticmethod
     def _parse_float_list(value) -> list[float]:
@@ -814,6 +816,20 @@ class DeepfakeDataset(Dataset):
             if peak > 0:
                 wavform = wavform / peak
 
+            tokens = None
+            token_mask = None
+            if self.tokenizer is not None and sample.sentence is not None:
+                inputs = self.tokenizer(
+                    sample.sentence,
+                    add_special_tokens=True,
+                    truncation=True,
+                    padding='max_length',
+                    max_length=self.text_max_len,
+                    return_attention_mask=True,
+                )
+                tokens = torch.tensor(inputs['input_ids'])
+                token_mask = torch.tensor(inputs['attention_mask'], dtype=torch.bool)
+
             return Sample(
                 filename        = sample.filename,
                 path            = sample.path,
@@ -826,6 +842,8 @@ class DeepfakeDataset(Dataset):
                 vowel_data      = sample.vowel_data,
                 consonant_data  = sample.consonant_data,
                 sentence        = sample.sentence,
+                tokens          = tokens,
+                token_mask      = token_mask,
                 asvspoof5_cache = getattr(sample, 'asvspoof5_cache', None),
             )
         except Exception as e:
@@ -1042,11 +1060,22 @@ class DeepfakeDataset(Dataset):
             #     print(f"  Vowel Deviation: {vowel_devi[i]}")
             #     print(f"  Word SIDs: {word_sid[i]}")
             # print("---------------------------\n")
+        tokens = None
+        text_mask = None
+        if any(item.tokens is not None for item in batch):
+            tokens = torch.stack([item.tokens for item in batch if item.tokens is not None])
+            text_mask = torch.stack([item.token_mask for item in batch if item.token_mask is not None])
+
         return Batch(
             filenames       = [item.filename for item in batch],
             path            = [item.path for item in batch],
             wavform         = wavform,
             length          = length,
+
+            # for text model
+            sentences       = [item.sentence for item in batch if item.sentence is not None],
+            tokens          = tokens,
+            text_mask       = text_mask,
 
             # for deepfake detection
             deepfake_labels = torch.tensor([item.deepfake_label for item in batch], dtype=torch.long)    if self.is_labeled else None,

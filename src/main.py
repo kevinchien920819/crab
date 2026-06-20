@@ -66,7 +66,7 @@ def main(config_name) -> None:
 def _create_dataset(cfg, tokenizer):
     """根據 config 類型建立對應的 Dataset 物件。"""
     if isinstance(cfg, DeepfakeBaselineConfig):
-        return DeepfakeDataset()
+        return DeepfakeDataset(tokenizer=tokenizer, text_max_len=cfg.dataloader.text_max_len)
     else:
         return EmotionDataset(tokenizer=tokenizer, text_max_len=cfg.dataloader.text_max_len)
 
