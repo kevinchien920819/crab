@@ -18,11 +18,10 @@ def setup_freeze(cfg: BaseConfig, logger: logging.Logger, model: torch.nn.Module
 def setup_tf32(cfg: BaseConfig, logger: logging.Logger) -> None:
     """Configure TF32 settings for supported CUDA devices."""
     if cfg.general.device == 'cuda':
-        os.environ['CUDA_VISIBLE_DEVICES'] = cfg.general.device_id
-
-        # is gpu supported tf32
+        # CUDA_VISIBLE_DEVICES 已在 main.py 依 device_id 設定，
+        # 此 process 內可見的卡一律重新編號為 0。
         if torch.cuda.is_available():
-            gpu_name = torch.cuda.get_device_name(int(cfg.general.device_id))
+            gpu_name = torch.cuda.get_device_name(torch.cuda.current_device())
             logger.info(f'Using GPU: {gpu_name}')
 
             if any(arch in gpu_name for arch in ['RTX 30', 'RTX 40', 'RTX 50', 'A100', 'H100', 'A10']):
