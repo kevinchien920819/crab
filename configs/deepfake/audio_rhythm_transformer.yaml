@@ -1,0 +1,82 @@
+general:
+  device: cuda
+  device_id: '0'
+  work_dir: default
+  seed: 39
+  deterministic: true
+  freeze: []
+  unfreeze: []
+  ckpt:
+    path: ''
+    modules:
+      from:
+      - all
+      to:
+      - all
+  testing_ckpt: default
+  train: True
+  eval: True
+  produce_evaluation_file: True
+
+model:
+  name: DeepfakeAudioRhythmTransformerModel
+  tag: v5
+  description: 'Baseline for ADD task using Audio and Rhythm with Transformer'
+  ssl_model_str: WAV2VEC2_XLSR_300M
+  use_audio: true
+  use_rhythm: true
+  rhythm_sources:
+  - syllable
+  - vowel
+  - consonant
+  num_classes: 2
+  d_model: 256
+  d_contrastive: 128
+  n_heads: 4
+  n_cls_encoder_layers: 4
+  n_rhythm_encoder_layers: 2
+  n_inter_encoder_layers: 1
+  dropout: 0.3
+
+solver:
+  optimizer: AdamW
+  scheduler: div
+  max_epochs: 20
+  freeze_epochs: 0
+  lr:
+    default: 0.0001
+  iters_to_accumulate: 8
+  amp_dtype: fp16
+  criterions:
+    ce_loss:
+      name: CrossEntropyLoss
+      label_smoothing: 0.1
+      total_weight: 1.0
+
+datasets:
+  train_datasets:
+  - name: ASVspoof5
+    # dir: /home/poyu39/gitlab/fcu-slp/ssl-mamba/dataset
+    dir: /home/icebird/01_proj/crab/dataset
+    use_duration: true
+  test_datasets:
+  - name: ASVspoof5
+    dir: /home/icebird/01_proj/crab/dataset
+    use_duration: true
+
+
+dataloader:
+  name: Dataset
+  num_workers: 8
+  batch_size:
+    train: 8
+    dev: 4
+    eval: 4
+
+linebot:
+  enable: false
+
+wandb:
+  enable: true
+  entity: icebird50817
+  project: crab
