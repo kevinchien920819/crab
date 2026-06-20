@@ -80,5 +80,5 @@ linebot:
 
 wandb:
   enable: true
-  entity: icebrid50817
+  entity: icebird50817
   project: crab
