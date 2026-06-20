@@ -474,11 +474,25 @@ class DeepfakeDataset(Dataset):
         """Convert one pickle payload item into ASVspoof5Cache."""
         if isinstance(item, ASVspoof5Cache):
             return item
+        if isinstance(item, Sample):
+            cache_item = getattr(item, "asvspoof5_cache", None)
+            if cache_item is None:
+                raise ValueError(f"ASVspoof5 Sample cache item has no asvspoof5_cache: {item.filename}")
+            return self._asvspoof5_cache_from_object(cache_item)
         if isinstance(item, dict):
             return self._asvspoof5_cache_from_row(item)
-        if hasattr(item, '__dict__'):
+        if hasattr(item, "__dict__"):
             return self._asvspoof5_cache_from_row(vars(item))
-        raise TypeError(f'Unsupported ASVspoof5 cache item type: {type(item).__name__}')
+        raise TypeError(f"Unsupported ASVspoof5 cache item type: {type(item).__name__}")
+
+    @staticmethod
+    def _asvspoof5_has_any_rhythm_interval(cache_item: ASVspoof5Cache) -> bool:
+        """Return whether a cache item has any usable ASVspoof5 rhythm interval."""
+        for source in ("word", "syllable", "vowel", "consonant"):
+            duration = getattr(cache_item, f"duration_{source}", None)
+            if duration is not None and len(duration) > 0:
+                return True
+        return False
 
     def _iter_asvspoof5_cache_payload(self, payload):
         """Yield row-like items from common pickle payload shapes."""
@@ -543,6 +557,19 @@ class DeepfakeDataset(Dataset):
                 return candidate
         return candidates[0]
 
+    def _resolve_asvspoof5_cache_path(
+        self,
+        dataset_path: Path,
+        subset: str,
+    ) -> Path:
+        """Prefer an ASVspoof5 pkl rhythm cache when present, otherwise use cache CSV."""
+        asvspoof5_dir = dataset_path / "ASVspoof5"
+        source_csv_path = asvspoof5_dir / f"cache_ASVspoof5_{subset}.csv"
+        source_pkl_path = source_csv_path.with_suffix(".pkl")
+        if source_pkl_path.exists():
+            return source_pkl_path
+        return source_csv_path
+
     def _load_asvspoof5_cache_samples(
         self,
         cache_path: Path,
@@ -550,8 +577,11 @@ class DeepfakeDataset(Dataset):
         flac_dir: Path,
     ) -> list[Sample]:
         """Load ASVspoof5 samples from the precomputed rhythm cache pkl or CSV."""
-        if cache_path.suffix == '.pkl':
-            with cache_path.open('rb') as f:
+        if not cache_path.exists():
+            raise FileNotFoundError(f"Missing ASVspoof5 rhythm cache file: {cache_path}")
+
+        if cache_path.suffix == ".pkl":
+            with cache_path.open("rb") as f:
                 payload = pickle.load(f)
             cache_rows = list(self._iter_asvspoof5_cache_payload(payload))
         else:
@@ -559,15 +589,20 @@ class DeepfakeDataset(Dataset):
             cache_rows = list(cache_df.iter_rows(named=True))
 
         samples = []
+        skipped_empty_rhythm = 0
         for row in tqdm(
             cache_rows,
             total=len(cache_rows),
-            desc=f'Loading ASVspoof5 cache {cache_path.name}',
+            desc=f"Loading ASVspoof5 cache {cache_path.name}",
         ):
             cache_item = self._asvspoof5_cache_from_object(row)
+            if not self._asvspoof5_has_any_rhythm_interval(cache_item):
+                skipped_empty_rhythm += 1
+                continue
+
             flac_path = self._resolve_asvspoof5_flac_path(cache_item, dataset_path, flac_dir)
             if not flac_path.exists():
-                raise FileNotFoundError(f'Missing audio file: {flac_path}')
+                raise FileNotFoundError(f"Missing audio file: {flac_path}")
 
             filename = Path(cache_item.flac_file_name).stem
             samples.append(
@@ -580,6 +615,9 @@ class DeepfakeDataset(Dataset):
                     asvspoof5_cache=cache_item,
                 )
             )
+
+        if skipped_empty_rhythm:
+            print(f"[Dataset] Skipped {skipped_empty_rhythm} ASVspoof5 samples with empty word/syllable/vowel/consonant rhythm intervals")
         return samples
 
     def preload_asvspoof(self, dataset_path: Path, year = '2019_LA', subset_list: list[str] = ['train'], use_duration: bool = False):
@@ -601,15 +639,32 @@ class DeepfakeDataset(Dataset):
             duration_tag = 'with_asvspoof5_cache'
         else:
             duration_tag = 'with_duration' if self.use_duration else 'no_duration'
-        cache_path = dataset_path / asvspoof_str / f'cache_{year}_{subset_tag}_{duration_tag}_ds{self.downsample_factor}.pkl'
+        processed_cache_path = dataset_path / asvspoof_str / f"cache_{year}_{subset_tag}_{duration_tag}_ds{self.downsample_factor}.pkl"
 
-        if cache_path.exists():
-            with cache_path.open('rb') as f:
+        if processed_cache_path.exists():
+            with processed_cache_path.open("rb") as f:
                 cached = pickle.load(f)
-            self.data.extend(cached)
-            self.is_labeled = True
-            print(f'[Dataset] Loaded ASVspoof cache: {cache_path} ({len(cached)} samples)')
-            return
+            if year == "5" and self.use_duration:
+                original_count = len(cached)
+                cached = [
+                    sample for sample in cached
+                    if self._asvspoof5_has_any_rhythm_interval(self._asvspoof5_cache_from_object(sample))
+                ]
+                skipped_count = original_count - len(cached)
+                if skipped_count:
+                    print(f"[Dataset] Skipped {skipped_count} cached ASVspoof5 samples with empty word/syllable/vowel/consonant rhythm intervals")
+                if not cached:
+                    print(f"[Dataset] Ignoring empty ASVspoof cache: {processed_cache_path}")
+                else:
+                    self.data.extend(cached)
+                    self.is_labeled = True
+                    print(f"[Dataset] Loaded ASVspoof cache: {processed_cache_path} ({len(cached)} samples)")
+                    return
+            else:
+                self.data.extend(cached)
+                self.is_labeled = True
+                print(f"[Dataset] Loaded ASVspoof cache: {processed_cache_path} ({len(cached)} samples)")
+                return
 
         for subset in subset_list:
             if year == '2019_LA':
@@ -636,8 +691,8 @@ class DeepfakeDataset(Dataset):
             duration_csv_path = dataset_path / asvspoof_str / f'ASVspoof{year}_csv' / f'ASVspoof{year_dot}.{subset}.csv'
 
             if year == '5' and self.use_duration:
-                cache_path = dataset_path / asvspoof_str / f'cache_ASVspoof5_{subset}.pkl'
-                data.extend(self._load_asvspoof5_cache_samples(cache_path, dataset_path, flac_dir))
+                source_cache_path = self._resolve_asvspoof5_cache_path(dataset_path, subset)
+                data.extend(self._load_asvspoof5_cache_samples(source_cache_path, dataset_path, flac_dir))
                 continue
 
             if self.use_duration:
@@ -721,9 +776,9 @@ class DeepfakeDataset(Dataset):
 
         self.data.extend(data)
         self.is_labeled = True
-        with cache_path.open('wb') as f:
+        with processed_cache_path.open("wb") as f:
             pickle.dump(data, f)
-        print(f'[Dataset] Saved ASVspoof cache: {cache_path} ({len(data)} samples)')
+        print(f"[Dataset] Saved ASVspoof cache: {processed_cache_path} ({len(data)} samples)")
 
     def get_lengths(self) -> list[int]:
         """Return raw waveform lengths for preloaded deepfake samples."""
@@ -1022,7 +1077,7 @@ class DeepfakeDataset(Dataset):
 if __name__ == "__main__":
     # Example usage
     dataset = EmotionDataset()
-    dataset_root = Path('/home/icebird/01_proj/ssl-mamba/dataset')
+    dataset_root = Path('/home/icebird/01_proj/crab/dataset')
     dataset.preload_meld(
         dataset_path=dataset_root,
         subset_list=['train', 'dev', 'test']

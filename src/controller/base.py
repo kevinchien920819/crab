@@ -137,7 +137,6 @@ class Controller:
         def cosine_eta_min_lambda(base_lr: float, eta_min: float):
             """
             Returns a lambda function that computes the learning rate multiplier for CosineAnnealingLR with a given eta_min.
-            $$\eta_t = \eta_{\text{min}} + \frac{1}{2}(\eta_{\text{max}} - \eta_{\text{min}})\left(1 + \cos\left(\frac{T_{\text{cur}}}{T_{\text{max}}}\pi\right)\right)$$
             """
             def lr_lambda(epoch: int) -> float:
                 """Return the cosine learning-rate multiplier for one parameter group."""

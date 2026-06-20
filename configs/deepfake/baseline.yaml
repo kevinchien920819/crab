@@ -57,14 +57,14 @@ datasets:
   train_datasets:
   - name: ASVspoof5
     # dir: /home/poyu39/gitlab/fcu-slp/ssl-mamba/dataset
-    dir: /home/icebird/01_proj/ssl-mamba/dataset
+    dir: /home/icebird/01_proj/crab/dataset
     use_duration: true
   test_datasets:
   - name: ASVspoof2021_DF
-    dir: /home/icebird/01_proj/ssl-mamba/dataset
+    dir: /home/icebird/01_proj/crab/dataset
     use_duration: true
   - name: ASVspoof2021_LA
-    dir: /home/icebird/01_proj/ssl-mamba/dataset
+    dir: /home/icebird/01_proj/crab/dataset
     use_duration: true
 
 dataloader:
