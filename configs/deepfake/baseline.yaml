@@ -60,10 +60,10 @@ datasets:
     dir: /home/icebird/01_proj/crab/dataset
     use_duration: true
   test_datasets:
-  - name: ASVspoof2021_DF
+  - name: ASVspoof5
     dir: /home/icebird/01_proj/crab/dataset
     use_duration: true
-  - name: ASVspoof2021_LA
+  - name: ASVspoof5
     dir: /home/icebird/01_proj/crab/dataset
     use_duration: true
 

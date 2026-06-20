@@ -345,6 +345,18 @@ class Controller:
 
         return total_loss, loss_list
 
+    def _asvspoof_cm_score(self, logits: Tensor) -> Tensor:
+        """Return one bonafide-oriented CM score per sample for ASVspoof score files."""
+        if logits.dim() == 3:
+            # Preserve the previous sequence-output behavior: first step, class 0.
+            return logits[:, 0, 0]
+        if logits.dim() == 2:
+            # Deepfake labels use 0=bonafide, 1=spoof; CM scoring expects higher=bonafide.
+            return logits[:, 0]
+        if logits.dim() == 1:
+            return logits
+        raise ValueError(f'Unsupported logits shape for ASVspoof scoring: {tuple(logits.shape)}')
+
     def update_model(self, scaler: torch.amp.GradScaler):
         """Apply gradient clipping, optimizer stepping, scaler updates, and gradient reset."""
         if scaler is not None:
@@ -388,7 +400,7 @@ class Controller:
                 with amp_ctx:
                     m_out = self.model(b)
                     if self.cfg.general.produce_evaluation_file and not backward:
-                        batch_score = (m_out.logits[:, 0, 0]).data.cpu().numpy().ravel()
+                        batch_score = self._asvspoof_cm_score(m_out.logits).detach().cpu().numpy().ravel()
                         # add outputs
                         fname_list.extend(Path(p).stem for p in b.path)
                         score_list.extend(batch_score.tolist())
