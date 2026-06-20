@@ -71,9 +71,9 @@ dataloader:
   name: Dataset
   num_workers: 8
   batch_size:
-    train: 16
-    dev: 32
-    eval: 32
+    train: 8
+    dev: 4
+    eval: 4
 
 linebot:
   enable: false
