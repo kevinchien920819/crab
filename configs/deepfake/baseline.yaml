@@ -80,5 +80,5 @@ linebot:
 
 wandb:
   enable: true
-  entity: fcu-slp
-  project: ssl-mamba
+  entity: icebrid50817
+  project: crab
