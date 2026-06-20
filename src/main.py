@@ -45,6 +45,11 @@ def main(config_name) -> None:
     """CLI entry point that loads a config and starts the pipeline."""
     cfg = load_config(config_name)
 
+    # 在任何 CUDA 操作之前，依 device_id 限定本 process 可見的 GPU。
+    # 被選到的卡會在程式內重新編號為 cuda:0，因此 device 維持 'cuda' 即可。
+    if cfg.general.device == 'cuda' and cfg.general.device_id:
+        os.environ['CUDA_VISIBLE_DEVICES'] = str(cfg.general.device_id)
+
     os.makedirs(cfg.general.work_dir, exist_ok=True)
 
     logger = setup_logger(
