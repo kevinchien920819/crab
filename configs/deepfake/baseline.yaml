@@ -63,9 +63,6 @@ datasets:
   - name: ASVspoof5
     dir: /home/icebird/01_proj/crab/dataset
     use_duration: true
-  - name: ASVspoof5
-    dir: /home/icebird/01_proj/crab/dataset
-    use_duration: true
 
 dataloader:
   name: Dataset
