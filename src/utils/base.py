@@ -17,20 +17,29 @@ def setup_freeze(cfg: BaseConfig, logger: logging.Logger, model: torch.nn.Module
 
 def setup_tf32(cfg: BaseConfig, logger: logging.Logger) -> None:
     """Configure TF32 settings for supported CUDA devices."""
-    if cfg.general.device == 'cuda':
-        # CUDA_VISIBLE_DEVICES 已在 main.py 依 device_id 設定，
-        # 此 process 內可見的卡一律重新編號為 0。
-        if torch.cuda.is_available():
-            gpu_name = torch.cuda.get_device_name(torch.cuda.current_device())
-            logger.info(f'Using GPU: {gpu_name}')
+    if cfg.general.device != 'cuda':
+        return
 
-            if any(arch in gpu_name for arch in ['RTX 30', 'RTX 40', 'RTX 50', 'A100', 'H100', 'A10']):
-                torch.backends.cudnn.allow_tf32 = True
-                torch.backends.cuda.matmul.allow_tf32 = True
-                logger.info('TF32 enabled for better performance on supported GPUs')
-            else:
-                torch.backends.cudnn.allow_tf32 = False
-                logger.info('TF32 not supported on this GPU, using default precision')
+    if not torch.cuda.is_available():
+        logger.info('CUDA is not available, using default precision')
+        return
+
+    current_device = torch.cuda.current_device()
+    gpu_name = torch.cuda.get_device_name(current_device)
+    major, minor = torch.cuda.get_device_capability(current_device)
+
+    logger.info(f'Using GPU: {gpu_name}')
+    logger.info(f'GPU compute capability: {major}.{minor}')
+
+    # TF32 is available on NVIDIA Ampere and later, i.e. compute capability >= 8.0.
+    if major >= 8:
+        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cuda.matmul.allow_tf32 = True
+        logger.info('TF32 enabled for better performance on supported GPUs')
+    else:
+        torch.backends.cudnn.allow_tf32 = False
+        torch.backends.cuda.matmul.allow_tf32 = False
+        logger.info('TF32 not supported on this GPU, using default precision')
 
 def set_seed(seed=39, deterministic=False):
     """Seed Python, NumPy, and PyTorch RNGs and configure cuDNN determinism."""
