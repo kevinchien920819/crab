@@ -3,6 +3,8 @@
 \input{settings.tex}
 
 \newcommand{\crab}{\textsc{Crab}}
+\renewcommand{\thetable}{\Roman{table}}
+\definecolor{crabgreen}{HTML}{79E889}
 
 \begin{document}
 
@@ -23,10 +25,6 @@
 \section*{Abstract}
 
 This study repurposes \crab{} (Contrastive Representation and Multimodal Aligned Bottleneck) from its original speech emotion recognition setting to audio deepfake detection.
-The goal of audio deepfake detection is to determine whether a speech utterance is bona fide or spoofed by text-to-speech synthesis, voice conversion, replay attacks, or other speech generation techniques.
-Unlike emotion recognition, which predicts affective categories, audio deepfake detection is a security-oriented binary countermeasure task;
-therefore, the model must not only classify correctly but also produce robust spoofing scores under unseen attacks, unseen speakers, and cross-corpus conditions.
-
 The original \crab{} paper builds a bimodal Cross-Modal Transformer with WavLM and RoBERTa,and introduces Multi Layer Contrastive Supervision (MLCS) to apply multi-positive contrastive learning at several intermediate layers, encouraging discriminative speech and text representations before the final classifier \cite{ueda2026crab}.
 This report transfers the same representation-learning idea to audio deepfake detection: a self-supervised speech encoder extracts waveform representations, the prediction target is changed to bona fide/spoof classification, and evaluation follows ASVspoof-style metrics such as Equal Error Rate (EER) and detection cost functions.
 The front part of this report focuses on the motivation, related work, backend detection system, and the role of \crab{} as a representation-learning basis for audio deepfake detection.
@@ -76,6 +74,61 @@ Finally, Section 5 sum up the conclusion of the paper.
 \subsection{系統架構}
 
 \section{RESULT}
+We first reproduce the SER setting of the \crab{} model.
+Table~\ref{tab:ser_results} presents a comparative evaluation of all baseline systems and the proposed \crab{} model.
+
+\begin{table}[t]
+    \centering
+    \caption{Comparison of SER performance on IEMOCAP and MSP-Podcast 2.0.}
+    \label{tab:ser_results}
+    \resizebox{\columnwidth}{!}{%
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        \multirow{2}{*}{Model} & \multicolumn{2}{c}{IEMOCAP} & \multicolumn{2}{c}{MSP-Podcast 2.0} \\
+        \cmidrule(lr){2-3}\cmidrule(l){4-5}
+        & WAR & UAR & WAR & UAR \\
+        \midrule
+        WavLM Baseline & 0.6616 & 0.6832 & 0.5131 & 0.4105 \\
+        FocalSer & 0.6676 & 0.6943 & 0.2892 & 0.3360 \\
+        MemoCMT & 0.6964 & 0.7123 & \textbf{0.6239} & 0.3285 \\
+        Medusa & 0.6605 & 0.6778 & 0.4157 & 0.3549 \\
+        \rowcolor{crabgreen}
+        \crab{} & \textbf{0.7348} & \textbf{0.7585} & 0.5232 & \textbf{0.4390} \\
+        \midrule
+        \crab{} (re-implement) & 0.7365 & 0.74292 & 0.4997 & 0.4194 \\
+        \bottomrule
+    \end{tabular}
+    }
+\end{table}
+
+
+
+\begin{table}[t]
+    \centering
+    \caption{Comparison of audio deepfake detection performance on ASVspoof5.}
+    \label{tab:deepfake_result}
+    \resizebox{\columnwidth}{!}{%
+    \begin{tabular}{@{}llccc@{}}
+        \toprule
+        \multirow{2}{*}{Model} & \multirow{2}{*}{Modality} & \multirow{2}{*}{Encoder} & \multicolumn{2}{c}{ASVspoof5} \\
+        \cmidrule(l){4-5}
+        & & & EER & min-DCF \\
+        \midrule
+        AASIST & Audio & RawNet2 & 6.08& 0.1645 \\
+        Nes2Net & Audio &  & 6.13 & 0.1568 \\
+
+        \midrule
+
+        AudioRhythmModel & Audio & GRU & TBD & TBD \\
+        AudioRhythmModel & Audio & Transformer & TBD & TBD \\
+        AudioRhythmModel & Audio+Rhythm & GRU & TBD & TBD \\
+        AudioRhythmModel & Audio+Rhythm & Transformer & TBD & TBD \\
+        AudioTextModel & Audio+Text & GRU & TBD & TBD \\
+        AudioTextModel & Audio+Text & Transformer & TBD & TBD \\
+        \bottomrule
+    \end{tabular}
+    }
+\end{table}
 
 情緒辨識的評估輸出 WAR 與 UAR：
 \begin{align}
