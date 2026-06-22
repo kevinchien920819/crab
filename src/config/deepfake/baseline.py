@@ -17,7 +17,7 @@ class DeepfakeBaselineModelConfig:
     description: str = ""
     
     ssl_model_str: str = 'WAVLM_LARGE'
-    text_model_str: str = 'ROBERTA_BASE_ENCODER'
+    text_model_str: str = 'ROBERTA_LARGE_ENCODER'
     use_audio: bool = True
     use_rhythm: bool = False
     use_text: bool = False

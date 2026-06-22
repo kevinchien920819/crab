@@ -1,3 +1,4 @@
+import csv
 import os
 import pickle
 from dataclasses import fields
@@ -53,6 +54,24 @@ ASVSPOOF5_CACHE_FLOAT_FIELDS = {
     'nPVI_consonant',
 }
 ASVSPOOF5_PRECOMPUTED_SOURCES = {'syllable', 'vowel', 'consonant'}
+EMPTY_FLOAT_ARRAY = np.empty(0, dtype=np.float32)
+ASVSPOOF5_UNUSED_CACHE_STRING_FIELDS = {
+    'speaker_id',
+    'speaker_gender',
+    'codec',
+    'codec_q',
+    'codec_seed',
+    'attack_tag',
+    'attack_label',
+    'content_word',
+    'content_syllable',
+    'content_phoneme',
+}
+ASVSPOOF5_UNUSED_CACHE_LIST_FIELDS = {
+    'starttime_phoneme',
+    'endtime_phoneme',
+    'duration_phoneme',
+}
 
 
 class EmotionDataset(Dataset):
@@ -103,8 +122,8 @@ class EmotionDataset(Dataset):
             'fear': 2,
             'sadness': 3,
             'joy': 4,
-            'disgust': 5,
-            'anger': 6
+            'anger': 5,
+            'disgust': 6,
         }
         sentiment_mapping = {
             'neutral': 0,
@@ -422,19 +441,22 @@ class DeepfakeDataset(Dataset):
         self.text_max_len = text_max_len
 
     @staticmethod
-    def _parse_float_list(value) -> list[float]:
-        """Parse CSV list fields stored as comma-separated strings."""
+    def _parse_float_list(value) -> np.ndarray:
+        """Parse CSV list fields into compact float32 arrays."""
         if value is None:
-            return []
+            return EMPTY_FLOAT_ARRAY
         if isinstance(value, np.ndarray):
-            return [float(item) for item in value.tolist()]
+            return value.astype(np.float32, copy=False)
         if isinstance(value, list):
-            return [float(item) for item in value]
+            return np.asarray(value, dtype=np.float32)
 
         text = str(value).strip().strip('[]')
         if not text or text == '-':
-            return []
-        return [float(item.strip()) for item in text.split(',') if item.strip()]
+            return EMPTY_FLOAT_ARRAY
+        return np.fromiter(
+            (float(item.strip()) for item in text.split(',') if item.strip()),
+            dtype=np.float32,
+        )
 
     @staticmethod
     def _parse_int(value, default: int = 0) -> int:
@@ -457,20 +479,72 @@ class DeepfakeDataset(Dataset):
         return float(value)
 
     def _asvspoof5_cache_from_row(self, row: dict) -> ASVspoof5Cache:
-        """Convert one ASVspoof5 rhythm CSV row to a typed cache item."""
+        """Convert one ASVspoof5 rhythm CSV row to a compact typed cache item."""
         values = {}
+        keep_sentence = self.tokenizer is not None
         for field in fields(ASVspoof5Cache):
             value = row.get(field.name)
-            if field.name in ASVSPOOF5_CACHE_LIST_FIELDS:
+            if field.name in ASVSPOOF5_UNUSED_CACHE_LIST_FIELDS:
+                values[field.name] = EMPTY_FLOAT_ARRAY
+            elif field.name in ASVSPOOF5_CACHE_LIST_FIELDS:
                 values[field.name] = self._parse_float_list(value)
             elif field.name in ASVSPOOF5_CACHE_INT_FIELDS:
                 default = -1 if field.name == 'label' else 0
                 values[field.name] = self._parse_int(value, default=default)
             elif field.name in ASVSPOOF5_CACHE_FLOAT_FIELDS:
                 values[field.name] = self._parse_float(value)
+            elif field.name in ASVSPOOF5_UNUSED_CACHE_STRING_FIELDS:
+                values[field.name] = ''
+            elif field.name == 'content_sentence' and not keep_sentence:
+                values[field.name] = ''
             else:
                 values[field.name] = '' if value is None else str(value)
         return ASVspoof5Cache(**values)
+
+    def _compact_asvspoof5_cache_item(self, cache_item: ASVspoof5Cache) -> ASVspoof5Cache:
+        """Drop unused text fields and store interval lists as float32 arrays."""
+        for field_name in ASVSPOOF5_CACHE_LIST_FIELDS:
+            if field_name in ASVSPOOF5_UNUSED_CACHE_LIST_FIELDS:
+                setattr(cache_item, field_name, EMPTY_FLOAT_ARRAY)
+            else:
+                setattr(cache_item, field_name, self._parse_float_list(getattr(cache_item, field_name, None)))
+
+        for field_name in ASVSPOOF5_UNUSED_CACHE_STRING_FIELDS:
+            setattr(cache_item, field_name, '')
+
+        if self.tokenizer is None:
+            cache_item.content_sentence = ''
+
+        return cache_item
+
+    def _compact_asvspoof5_sample(self, sample: Sample) -> Sample:
+        """Compact one cached ASVspoof5 sample loaded from an older pickle cache."""
+        cache_item = getattr(sample, 'asvspoof5_cache', None)
+        if cache_item is None:
+            return sample
+
+        cache_item = self._compact_asvspoof5_cache_item(self._asvspoof5_cache_from_object(cache_item))
+        sample.asvspoof5_cache = cache_item
+        sample.sentence = cache_item.content_sentence if self.tokenizer is not None else None
+        sample.wavform = None
+        sample.tokens = None
+        sample.token_mask = None
+        return sample
+
+    @staticmethod
+    def _count_csv_rows(cache_path: Path) -> int | None:
+        """Count CSV payload rows for tqdm without materializing the file."""
+        try:
+            with cache_path.open('r', newline='') as f:
+                return max(sum(1 for _ in f) - 1, 0)
+        except OSError:
+            return None
+
+    @staticmethod
+    def _iter_csv_rows(cache_path: Path):
+        """Stream CSV rows as dictionaries."""
+        with cache_path.open('r', newline='') as f:
+            yield from csv.DictReader(f)
 
     def _asvspoof5_cache_from_object(self, item) -> ASVspoof5Cache:
         """Convert one pickle payload item into ASVspoof5Cache."""
@@ -586,18 +660,19 @@ class DeepfakeDataset(Dataset):
             with cache_path.open("rb") as f:
                 payload = pickle.load(f)
             cache_rows = list(self._iter_asvspoof5_cache_payload(payload))
+            total_rows = len(cache_rows)
         else:
-            cache_df = pl.read_csv(cache_path)
-            cache_rows = list(cache_df.iter_rows(named=True))
+            cache_rows = self._iter_csv_rows(cache_path)
+            total_rows = self._count_csv_rows(cache_path)
 
         samples = []
         skipped_empty_rhythm = 0
         for row in tqdm(
             cache_rows,
-            total=len(cache_rows),
+            total=total_rows,
             desc=f"Loading ASVspoof5 cache {cache_path.name}",
         ):
-            cache_item = self._asvspoof5_cache_from_object(row)
+            cache_item = self._compact_asvspoof5_cache_item(self._asvspoof5_cache_from_object(row))
             if not self._asvspoof5_has_any_rhythm_interval(cache_item):
                 skipped_empty_rhythm += 1
                 continue
@@ -613,7 +688,7 @@ class DeepfakeDataset(Dataset):
                     path=str(flac_path),
                     length=0,
                     deepfake_label=cache_item.label,
-                    sentence=cache_item.content_sentence,
+                    sentence=cache_item.content_sentence if self.tokenizer is not None else None,
                     asvspoof5_cache=cache_item,
                 )
             )
@@ -647,6 +722,7 @@ class DeepfakeDataset(Dataset):
             with processed_cache_path.open("rb") as f:
                 cached = pickle.load(f)
             if year == "5" and self.use_duration:
+                cached = [self._compact_asvspoof5_sample(sample) for sample in cached]
                 original_count = len(cached)
                 cached = [
                     sample for sample in cached

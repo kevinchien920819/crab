@@ -1,4 +1,5 @@
 import functools
+import gc
 import logging
 import os
 import time
@@ -37,6 +38,29 @@ def handle_exceptions(logger: Logger):
                 raise
         return wrapper
     return decorator
+
+
+def _shutdown_dataloader_workers(dataloader) -> None:
+    """Stop persistent DataLoader workers before dropping the dataloader."""
+    if dataloader is None:
+        return
+
+    iterator = getattr(dataloader, '_iterator', None)
+    if iterator is None:
+        return
+
+    shutdown = getattr(iterator, '_shutdown_workers', None)
+    if shutdown is not None:
+        shutdown()
+    dataloader._iterator = None
+
+
+def _collect_memory(logger: logging.Logger, context: str) -> None:
+    """Run Python and CUDA cache cleanup after large pipeline phases."""
+    collected = gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    logger.info(f'Memory cleanup after {context}: gc collected {collected} objects')
 
 
 @click.command()
@@ -148,10 +172,13 @@ def pipeline(logger: logging.Logger, cfg):
 
         logger.info(f'Train and dev completed in {training_time/60:.2f} minutes')
 
-        # Clean up trainer to release memory before evaluation
+        # Release train/dev datasets before loading the much larger eval split.
+        _shutdown_dataloader_workers(train_dataloader)
+        _shutdown_dataloader_workers(dev_dataloader)
         del trainer
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        del train_dataloader, dev_dataloader
+        del train_dataset, dev_dataset
+        _collect_memory(logger, 'train/dev')
 
     if cfg.general.eval:
         logger.info('Load eval dataset')
@@ -163,6 +190,7 @@ def pipeline(logger: logging.Logger, cfg):
             model.load_state_dict(checkpoint['model'])
             del checkpoint
             logger.info(f'Loaded model from checkpoint: {cfg.general.testing_ckpt}')
+            _collect_memory(logger, 'checkpoint load')
 
             for eval_subset in eval_subsets:
                 eval_dataset = _create_dataset(cfg, tokenizer)
@@ -175,43 +203,54 @@ def pipeline(logger: logging.Logger, cfg):
                 )
                 if len(eval_dataset) == 0:
                     logger.warning(f'Eval dataset {cfg_dataset.name}/{eval_subset} is empty. Skipping evaluation for this split.')
+                    _shutdown_dataloader_workers(eval_dataloader)
+                    del eval_dataloader, eval_dataset
+                    _collect_memory(logger, f'eval {cfg_dataset.name}/{eval_subset}')
                     continue
 
                 logger.info(f'Start eval for {cfg_dataset.name}/{eval_subset}')
 
                 trial_path = get_trial_path(cfg_dataset, eval_subset)
-                tester = Tester(
-                    logger,
-                    cfg,
-                    wandb_run,
-                    model,
-                    [eval_dataloader],
-                    str(trial_path) if trial_path else None,
-                    cfg_dataset.name,
-                    eval_split=eval_subset
-                )
-                if cfg_dataset.name in ['ASVspoof5', 'ASVspoof2019_LA', 'ASVspoof2021_LA', 'ASVspoof2021_DF']:
-                    eer, loss = tester.run()
-                    tester._calculate_minDCF_EER_CLLR_actDCF(
-                        cm_scores_file=os.path.join(cfg.general.work_dir, 'evaluation_scores.txt'),
-                        output_file=os.path.join(cfg.general.work_dir, f'{cfg_dataset.name}_{eval_subset}_result.txt'),
-                        printout=True
-                    )
-                    metrices = {'EER': eer}
-                elif cfg_dataset.name in ['MELD', 'IEMOCAP', 'MSP_Podcast']:
-                    war, uar, loss = tester.run()
-                    metrices = {'WAR': war, 'UAR': uar}
-                else:
-                    continue
-
-                if cfg.linebot.enable:
-                    linebot = LineBot(cfg.linebot.channel_access_token, cfg.linebot.user_id, logger)
-                    linebot.send(
+                tester = None
+                try:
+                    tester = Tester(
+                        logger,
                         cfg,
-                        total_params,
-                        loss,
-                        metrices
+                        wandb_run,
+                        model,
+                        [eval_dataloader],
+                        str(trial_path) if trial_path else None,
+                        cfg_dataset.name,
+                        eval_split=eval_subset
                     )
+                    if cfg_dataset.name in ['ASVspoof5', 'ASVspoof2019_LA', 'ASVspoof2021_LA', 'ASVspoof2021_DF']:
+                        eer, loss = tester.run()
+                        tester._calculate_minDCF_EER_CLLR_actDCF(
+                            cm_scores_file=os.path.join(cfg.general.work_dir, 'evaluation_scores.txt'),
+                            output_file=os.path.join(cfg.general.work_dir, f'{cfg_dataset.name}_{eval_subset}_result.txt'),
+                            printout=True
+                        )
+                        metrices = {'EER': eer}
+                    elif cfg_dataset.name in ['MELD', 'IEMOCAP', 'MSP_Podcast']:
+                        war, uar, loss = tester.run()
+                        metrices = {'WAR': war, 'UAR': uar}
+                    else:
+                        continue
+
+                    if cfg.linebot.enable:
+                        linebot = LineBot(cfg.linebot.channel_access_token, cfg.linebot.user_id, logger)
+                        linebot.send(
+                            cfg,
+                            total_params,
+                            loss,
+                            metrices
+                        )
+                finally:
+                    if tester is not None:
+                        del tester
+                    _shutdown_dataloader_workers(eval_dataloader)
+                    del eval_dataloader, eval_dataset
+                    _collect_memory(logger, f'eval {cfg_dataset.name}/{eval_subset}')
 
     if cfg.wandb.enable:
         wandb_run.finish()

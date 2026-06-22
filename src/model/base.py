@@ -179,7 +179,7 @@ class RhythmEncoder(nn.Module):
         if value is None:
             raise ValueError(f'Rhythm source "{source}" requires precomputed {field_name}.')
         value = value.to(device=reference.device, dtype=reference.dtype)
-        return value.masked_fill(~mask, 0.0)
+        return value.masked_fill(torch.logical_not(mask), 0.0)
 
     def _source_features(
         self,
@@ -195,7 +195,7 @@ class RhythmEncoder(nn.Module):
         if duration.size(1) == 0:
             return None
 
-        clean_duration = duration.masked_fill(~mask, 0.0)
+        clean_duration = duration.masked_fill(torch.logical_not(mask), 0.0)
         devil = self._required_feature(
             getattr(b, f'{source}_devi', None),
             source,
@@ -248,5 +248,5 @@ class RhythmEncoder(nn.Module):
         if isinstance(self.encoder, nn.Identity):
             x = self.encoder(x)
         else:
-            x = self.encoder(x, src_key_padding_mask=~mask)
+            x = self.encoder(x, src_key_padding_mask=torch.logical_not(mask))
         return x, mask

@@ -22,7 +22,7 @@ model:
   tag: v7
   description: ''
   ssl_model_str: WAVLM_LARGE
-  text_model_str: ROBERTA_BASE_ENCODER
+  text_model_str: ROBERTA_LARGE_ENCODER
   use_audio: true
   use_text: true
   num_classes: 8

@@ -110,6 +110,19 @@ def get_trial_path(cfg_dataset: DatasetConfig, subset: str) -> Path:
         raise NotImplementedError(f'Unsupported dataset name for trial path: {cfg_dataset.name}')
 
 
+def _dataloader_worker_settings(cfg: BaseConfig, subset_name: str, shuffle: bool) -> tuple[int, bool, int | None]:
+    """Return DataLoader worker settings from the configured defaults."""
+    num_workers = cfg.dataloader.num_workers
+    persistent_workers = cfg.dataloader.persistent_workers
+    prefetch_factor = cfg.dataloader.prefetch_factor
+
+    if num_workers <= 0:
+        persistent_workers = False
+        prefetch_factor = None
+
+    return num_workers, persistent_workers, prefetch_factor
+
+
 def get_dataloader(cfg: BaseConfig, dataset: Dataset, subset_name: str='', shuffle=True) -> DataLoader:
     """Create a DataLoader with the configured fixed or dynamic batching strategy."""
     max_tokens = cfg.dataloader.token_batch_size
@@ -119,6 +132,7 @@ def get_dataloader(cfg: BaseConfig, dataset: Dataset, subset_name: str='', shuff
     )
     lengths = dataset.get_lengths()
     batch_sampler = None
+    num_workers, persistent_workers, prefetch_factor = _dataloader_worker_settings(cfg, subset_name, shuffle)
 
     # 1. PaddingBatchSampler
     if cfg.dataloader.name == 'PaddingBatchSampler' and max_tokens > 0:
@@ -175,24 +189,24 @@ def get_dataloader(cfg: BaseConfig, dataset: Dataset, subset_name: str='', shuff
     if batch_sampler is not None:
         return DataLoader(
             dataset,
-            num_workers     = cfg.dataloader.num_workers,
+            num_workers     = num_workers,
             batch_sampler   = batch_sampler,
             collate_fn      = dataset.collate_fn_padded,
             # speed up
             pin_memory          = cfg.dataloader.pin_memory,
-            persistent_workers  = cfg.dataloader.persistent_workers and cfg.dataloader.num_workers > 0,
-            prefetch_factor     = cfg.dataloader.prefetch_factor if cfg.dataloader.num_workers > 0 else None,
+            persistent_workers  = persistent_workers,
+            prefetch_factor     = prefetch_factor,
         )
 
     # 6. Default fixed batch size DataLoader
     return DataLoader(
         dataset,
-        num_workers=cfg.dataloader.num_workers,
+        num_workers=num_workers,
         batch_size=batch_size,
         collate_fn=dataset.collate_fn_padded,
         shuffle=shuffle,
         # speed up
         pin_memory=cfg.dataloader.pin_memory,
-        persistent_workers=cfg.dataloader.persistent_workers and cfg.dataloader.num_workers > 0,
-        prefetch_factor=cfg.dataloader.prefetch_factor if cfg.dataloader.num_workers > 0 else None,
+        persistent_workers=persistent_workers,
+        prefetch_factor=prefetch_factor,
     )
