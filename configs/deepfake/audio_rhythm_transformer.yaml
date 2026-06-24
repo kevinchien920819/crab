@@ -22,7 +22,7 @@ model:
   name: DeepfakeAudioRhythmTransformerModel
   tag: v4
   description: 'Baseline for ADD task using Audio and Rhythm with Transformer'
-  ssl_model_str: WAV2VEC2_XLSR_300M
+  ssl_model_str: WAVLM_LARGE
   use_audio: true
   use_rhythm: true
   use_text: false

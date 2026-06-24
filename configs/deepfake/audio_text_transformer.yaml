@@ -22,7 +22,8 @@ model:
   name: DeepfakeAudioTextTransformerModel
   tag: v6
   description: 'Baseline for ADD task using Audio and Text'
-  ssl_model_str: WAV2VEC2_XLSR_300M
+  ssl_model_str: WAVLM_LARGE
+  text_model_str: ROBERTA_LARGE_ENCODER
   use_audio: true
   use_rhythm: false
   use_text: true

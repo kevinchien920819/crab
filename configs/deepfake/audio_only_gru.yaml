@@ -1,6 +1,6 @@
 general:
   device: cuda
-  device_id: '2'
+  device_id: '0'
   work_dir: default
   seed: 39
   deterministic: true
@@ -22,7 +22,7 @@ model:
   name: DeepfakeAudioRhythmGRUModel
   tag: v1
   description: 'Baseline for ADD task using Audio only'
-  ssl_model_str: WAV2VEC2_XLSR_300M
+  ssl_model_str: WAVLM_LARGE
   use_audio: true
   use_rhythm: false
   use_text: false
@@ -50,11 +50,11 @@ solver:
 datasets:
   train_datasets:
   - name: ASVspoof5
-    dir: /data/m314832018/Lab8/crab/dataset
+    dir: /home/icebird/01_proj/crab/dataset
     use_duration: true
   test_datasets:
   - name: ASVspoof5
-    dir: /data/m314832018/Lab8/crab/dataset
+    dir: /home/icebird/01_proj/crab/dataset
     use_duration: true
 
 dataloader:
