@@ -28,9 +28,9 @@ class PositionalEncoding(nn.Module):
         return x
 
 class RhythmEmbedding(nn.Module):
-    def __init__(self, d_model: int, dropout: float):
+    def __init__(self, input_dim: int, d_model: int, dropout: float):
         super().__init__()
-        self.linear = nn.LazyLinear(d_model)
+        self.linear = nn.Linear(input_dim, d_model)
         self.pos = PositionalEncoding(d_model)
         self.dropout = nn.Dropout(dropout)
         self.layernorm = nn.LayerNorm(d_model, eps=1e-12)
