@@ -26,3 +26,24 @@ class PositionalEncoding(nn.Module):
         x = x * math.sqrt(self.d_model)
         x = x + self.pe[:,:x.size(1)]
         return x
+
+class RhythmEmbedding(nn.Module):
+    def __init__(self, d_model: int, dropout: float):
+        super().__init__()
+        self.linear = nn.LazyLinear(d_model)
+        self.pos = PositionalEncoding(d_model)
+        self.dropout = nn.Dropout(dropout)
+        self.layernorm = nn.LayerNorm(d_model, eps=1e-12)
+    
+    def forward(self, *features: Tensor) -> Tensor:
+        """
+        features:多個 [B, T] tensor
+            EX: [vowel_duration, vowel_deviation, vowel_difference,consonant_duration,consonant_deviation, consonant_difference] each shape [B, T]
+        """
+        x = torch.stack(features, dim=-1)  # [B, T, F]
+        x = self.linear(x) # [B, T, D]
+        x = self.pos(x)
+        x = self.layernorm(x)
+        x = self.dropout(x)
+        return x
+    

@@ -26,9 +26,8 @@ DeepfakeModel Train Finished!
 - parameters: {total_params:,}
 - ssl_model: {cfg.model.ssl_model_str}
 - d_model: {cfg.model.d_model}
-- n_cls_encoder_layers: {cfg.model.n_cls_encoder_layers}
+- n_transformer_encoder_layers: {cfg.model.n_transformer_encoder_layers}
 - n_rhythm_encoder_layers: {cfg.model.n_rhythm_encoder_layers}
-- n_inter_encoder_layers: {cfg.model.n_inter_encoder_layers}
 - epochs: {cfg.solver.max_epochs}
 - eval_err: {err:.6f}'''
 

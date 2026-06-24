@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
+from torch import Tensor
 from torchaudio import pipelines
 from torchaudio.pipelines import Wav2Vec2Bundle
 from transformers import AutoModel, WavLMModel
 
+from config.deepfake.baseline import DeepfakeBaselineModelConfig
 from data.dataclass import Batch
-from .embedding import PositionalEncoding
-
+from .embedding import RhythmEmbedding
 
 class SSLModel(nn.Module):
     HF_MODEL_MAP = {
@@ -138,19 +139,20 @@ class TextModel(nn.Module):
 
 
 class RhythmEncoder(nn.Module):
-    """Encode duration, Devil, and nPVI interval features into rhythm tokens."""
+    """Encode configured duration-level rhythm features into rhythm tokens."""
 
-    def __init__(self, cfg):
+    FEATURE_SUFFIXES = ('d', 'devi', 'mu_diff')
+
+    def __init__(self, cfg: DeepfakeBaselineModelConfig):
         super().__init__()
-        self.sources = list(getattr(cfg, 'rhythm_sources', ['word', 'vowel', 'consonant']))
+        self.sources = list(getattr(cfg, 'rhythm_sources', ['syllable', 'vowel', 'consonant']))
         if not self.sources:
             raise ValueError('rhythm_sources must contain at least one interval source.')
 
-        self.feature_proj = nn.Linear(3, cfg.d_model)
-        self.source_embedding = nn.Embedding(len(self.sources), cfg.d_model)
-        self.positional_encoding = PositionalEncoding(cfg.d_model)
-        self.norm = nn.LayerNorm(cfg.d_model)
-        self.dropout = nn.Dropout(cfg.dropout)
+        self.rhythm_embedding = RhythmEmbedding(cfg.d_model, cfg.dropout)
+        if cfg.n_rhythm_encoder_layers < 0:
+            raise ValueError('n_rhythm_encoder_layers must be non-negative.')
+
         if cfg.n_rhythm_encoder_layers > 0:
             encoder_layer = nn.TransformerEncoderLayer(
                 d_model=cfg.d_model,
@@ -159,7 +161,7 @@ class RhythmEncoder(nn.Module):
                 dropout=cfg.dropout,
                 activation='gelu',
                 batch_first=True,
-                norm_first=True,
+                norm_first=False,
             )
             self.encoder = nn.TransformerEncoder(
                 encoder_layer,
@@ -168,83 +170,71 @@ class RhythmEncoder(nn.Module):
         else:
             self.encoder = nn.Identity()
 
-    def _required_feature(
-        self,
-        value: torch.Tensor | None,
-        source: str,
-        field_name: str,
-        reference: torch.Tensor,
-        mask: torch.Tensor,
-    ) -> torch.Tensor:
-        if value is None:
-            raise ValueError(f'Rhythm source "{source}" requires precomputed {field_name}.')
-        value = value.to(device=reference.device, dtype=reference.dtype)
-        return value.masked_fill(torch.logical_not(mask), 0.0)
-
     def _source_features(
         self,
         b: Batch,
         source: str,
-    ) -> tuple[torch.Tensor, torch.Tensor] | None:
-        duration = getattr(b, f'{source}_d', None)
+    ) -> tuple[list[Tensor], Tensor] | None:
+        field_names = [f'{source}_{suffix}' for suffix in self.FEATURE_SUFFIXES]
+        duration = getattr(b, field_names[0], None)
         if duration is None or duration.numel() == 0:
             return None
-
-        duration = duration.float()
-        mask = duration >= 0
+        if duration.dim() != 2:
+            raise ValueError(
+                f'Rhythm source {source!r} expects {field_names[0]} to be a [B, T] tensor, '
+                f'got shape {tuple(duration.shape)}.'
+            )
         if duration.size(1) == 0:
             return None
 
-        clean_duration = duration.masked_fill(torch.logical_not(mask), 0.0)
-        devil = self._required_feature(
-            getattr(b, f'{source}_devi', None),
-            source,
-            f'{source}_devi',
-            clean_duration,
-            mask,
-        )
-        npvi = self._required_feature(
-            getattr(b, f'{source}_mu_diff', None),
-            source,
-            f'{source}_mu_diff',
-            clean_duration,
-            mask,
-        )
-        features = torch.stack([clean_duration, devil, npvi], dim=-1)
+        duration = duration.float()
+        # Padding is marked on source_d only; devi/mu_diff can legitimately be 0.
+        mask = duration != -1.0
+
+        features: list[Tensor] = []
+        for field_name in field_names:
+            value = getattr(b, field_name, None)
+            if value is None:
+                raise ValueError(f'Rhythm source {source!r} requires precomputed {field_name}.')
+
+            value = value.to(device=duration.device, dtype=duration.dtype)
+            if value.shape != duration.shape:
+                raise ValueError(
+                    f'Rhythm source {source!r} has mismatched {field_name} shape: '
+                    f'{tuple(value.shape)} != {tuple(duration.shape)}.'
+                )
+            features.append(value.masked_fill(torch.logical_not(mask), 0.0))
+
         return features, mask
 
-    def forward(self, b: Batch) -> tuple[torch.Tensor, torch.Tensor]:
-        tokens = []
+    def forward(self, b: Batch, source: str | None = None) -> tuple[Tensor, Tensor]:
+        features = []
         masks = []
-        for source_idx, source in enumerate(self.sources):
-            source_data = self._source_features(b, source)
+        sources = [source] if source is not None else self.sources
+        for rhythm_source in sources:
+            source_data = self._source_features(b, rhythm_source)
             if source_data is None:
                 continue
-            features, mask = source_data
-            x = self.feature_proj(features)
-            source_ids = torch.full(
-                (x.size(0), x.size(1)),
-                source_idx,
-                device=x.device,
-                dtype=torch.long,
-            )
-            x = x + self.source_embedding(source_ids)
-            x = self.positional_encoding(x)
-            tokens.append(x)
+            source_features, mask = source_data
+            if masks and mask.shape != masks[0].shape:
+                raise ValueError(
+                    f'Rhythm source {rhythm_source!r} mask shape {tuple(mask.shape)} '
+                    f'does not match aligned rhythm mask shape {tuple(masks[0].shape)}.'
+                )
+            features.extend(source_features)
             masks.append(mask)
 
-        if not tokens:
+        if not features:
             raise ValueError(
-                "Rhythm modality requires duration features. "
-                "Set use_duration: true for the ASVspoof dataset config and provide duration CSV files."
+                'Rhythm modality requires duration features. '
+                'Set use_duration: true for the ASVspoof dataset config and provide duration CSV files.'
             )
 
-        x = torch.cat(tokens, dim=1)
-        mask = torch.cat(masks, dim=1)
+        mask = torch.stack(masks, dim=0).all(dim=0)
         if not mask.any(dim=1).all():
             raise ValueError('Every sample needs at least one valid rhythm interval.')
 
-        x = self.dropout(self.norm(x))
+        x = self.rhythm_embedding(*features)
         if isinstance(self.encoder, nn.Identity):
             x = self.encoder(x)
         else:

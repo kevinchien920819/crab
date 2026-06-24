@@ -21,16 +21,14 @@ class DeepfakeBaselineModelConfig:
     use_audio: bool = True
     use_rhythm: bool = False
     use_text: bool = False
-    rhythm_sources: list[str] = field(default_factory=lambda: ['word', 'vowel', 'consonant'])
+    rhythm_sources: list[str] = field(default_factory=lambda: ['syllable', 'vowel', 'consonant'])
     
     num_classes: int = 2
     d_model: int = 64
     d_contrastive: int = 16
     n_heads: int = 4
-    n_cls_encoder_layers: int = 1
-    n_rhythm_encoder_layers: int = 2
-    n_inter_encoder_layers: int = 1
-
+    n_transformer_encoder_layers: int = 1
+    n_rhythm_encoder_layers: int = 4
     dropout: float = 0.3
     
 @dataclass

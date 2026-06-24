@@ -3,11 +3,8 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from config.deepfake.baseline import DeepfakeBaselineModelConfig
-from data import Batch
-from ..base import RhythmEncoder
 from ..embedding import PositionalEncoding
 from ..pooling import attention_pool
 
@@ -22,7 +19,7 @@ class DeepfakeAudioTextTransformerModel(nn.Module):
         self.dropout = nn.Dropout(cfg.dropout)
 
         n_heads = getattr(cfg, 'n_transformer_heads', 4)
-        n_layers = getattr(cfg, 'n_transformer_encoder_layers', getattr(cfg, 'n_cls_encoder_layers', 2))
+        n_layers = getattr(cfg, 'n_transformer_encoder_layers', 1)
         ff_dim = getattr(cfg, 'transformer_ff_dim', cfg.d_model * 4)
 
         if cfg.d_model % n_heads != 0:
@@ -322,7 +319,7 @@ class DeepfakeAudioRhythmTransformerModel(nn.Module):
         self.dropout = nn.Dropout(cfg.dropout)
 
         n_heads = getattr(cfg, 'n_transformer_heads', 4)
-        n_layers = getattr(cfg, 'n_transformer_encoder_layers', getattr(cfg, 'n_cls_encoder_layers', 2))
+        n_layers = getattr(cfg, 'n_transformer_encoder_layers', 1)
         ff_dim = getattr(cfg, 'transformer_ff_dim', cfg.d_model * 4)
 
         if cfg.d_model % n_heads != 0:

@@ -14,9 +14,9 @@ general:
       to:
       - all
   testing_ckpt: default
-  train: True
-  eval: True
-  produce_evaluation_file: True
+  train: true
+  eval: true
+  produce_evaluation_file: true
 
 model:
   name: DeepfakeAudioRhythmTransformerModel
@@ -25,26 +25,21 @@ model:
   ssl_model_str: WAV2VEC2_XLSR_300M
   use_audio: true
   use_rhythm: false
-  rhythm_sources:
-  - syllable
-  - vowel
-  - consonant
+  use_text: false
   num_classes: 2
   d_model: 256
   d_contrastive: 128
   n_heads: 4
-  n_cls_encoder_layers: 4
-  n_rhythm_encoder_layers: 2
-  n_inter_encoder_layers: 1
+  n_transformer_encoder_layers: 1
   dropout: 0.3
 
 solver:
   optimizer: AdamW
-  scheduler: div
+  scheduler: CosineAnnealingLR
   max_epochs: 20
   freeze_epochs: 0
   lr:
-    default: 0.0001
+    default: 0.00001
   iters_to_accumulate: 8
   amp_dtype: fp16
   criterions:
@@ -56,14 +51,12 @@ solver:
 datasets:
   train_datasets:
   - name: ASVspoof5
-    # dir: /home/poyu39/gitlab/fcu-slp/ssl-mamba/dataset
     dir: /data/m314832018/Lab8/crab/dataset
     use_duration: true
   test_datasets:
   - name: ASVspoof5
     dir: /data/m314832018/Lab8/crab/dataset
     use_duration: true
-
 
 dataloader:
   name: Dataset
