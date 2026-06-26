@@ -976,6 +976,7 @@ class DeepfakeDataset(Dataset):
         batch: list[Sample],
         source: str,
         max_time_sec: float,
+        shared_valid_masks: list[torch.Tensor] | None = None,
     ) -> dict[str, torch.Tensor]:
         """Build padded Batch tensors for one ASVspoof5 rhythm source from cache rows."""
         duration_list = []
@@ -984,7 +985,7 @@ class DeepfakeDataset(Dataset):
         sid_list = []
         has_precomputed_rhythm = source in ASVSPOOF5_PRECOMPUTED_SOURCES
 
-        for item in batch:
+        for item_index, item in enumerate(batch):
             cache_item = getattr(item, 'asvspoof5_cache', None)
             if cache_item is None:
                 raise ValueError('ASVspoof5 cache batch contains a sample without asvspoof5_cache.')
@@ -1008,10 +1009,20 @@ class DeepfakeDataset(Dataset):
                 sid_list.append(torch.tensor([], dtype=torch.long))
                 continue
 
+            shared_valid = None
+            if shared_valid_masks is not None:
+                shared_valid = shared_valid_masks[item_index]
+                if interval_len != shared_valid.numel():
+                    raise ValueError(
+                        f"ASVspoof5 {source!r} interval count for {cache_item.flac_file_name} "
+                        f"({interval_len}) does not match syllable interval count "
+                        f"({shared_valid.numel()})."
+                    )
+
             start = start[:interval_len]
             end = end[:interval_len]
             duration = duration[:interval_len]
-            valid = end <= max_time_sec
+            valid = shared_valid if shared_valid is not None else end <= max_time_sec
             duration = duration[valid]
             sid = torch.floor(start[valid] * self.sample_rate / self.downsample_factor).to(torch.long)
 
@@ -1034,6 +1045,37 @@ class DeepfakeDataset(Dataset):
             f'{source}_sid': self._pad_interval_sequences(sid_list, torch.long),
         }
 
+    def _asvspoof5_syllable_valid_masks(
+        self,
+        batch: list[Sample],
+        max_time_sec: float,
+    ) -> list[torch.Tensor]:
+        """Build one syllable-level valid mask per sample for aligned rhythm sources."""
+        valid_masks = []
+        for item in batch:
+            cache_item = getattr(item, 'asvspoof5_cache', None)
+            if cache_item is None:
+                raise ValueError('ASVspoof5 cache batch contains a sample without asvspoof5_cache.')
+
+            start = torch.as_tensor(getattr(cache_item, 'starttime_syllable', []), dtype=torch.float32)
+            end = torch.as_tensor(getattr(cache_item, 'endtime_syllable', []), dtype=torch.float32)
+            duration = torch.as_tensor(getattr(cache_item, 'duration_syllable', []), dtype=torch.float32)
+            devi = torch.as_tensor(getattr(cache_item, 'devi_mu_syllable', []), dtype=torch.float32)
+            mu_diff = torch.as_tensor(getattr(cache_item, 'mu_diff_syllable', []), dtype=torch.float32)
+            interval_len = min(
+                start.numel(),
+                end.numel(),
+                duration.numel(),
+                devi.numel(),
+                mu_diff.numel(),
+            )
+            if interval_len == 0:
+                valid_masks.append(torch.tensor([], dtype=torch.bool))
+                continue
+
+            valid_masks.append(end[:interval_len] <= max_time_sec)
+        return valid_masks
+
     def _collate_asvspoof5_cache_features(
         self,
         batch: list[Sample],
@@ -1041,8 +1083,16 @@ class DeepfakeDataset(Dataset):
     ) -> dict[str, torch.Tensor]:
         """Convert parsed ASVspoof5Cache rows directly into Batch rhythm tensors."""
         features = {}
-        for source in ['word', 'syllable', 'vowel', 'consonant']:
-            features.update(self._asvspoof5_cache_source_tensors(batch, source, max_time_sec))
+        syllable_valid_masks = self._asvspoof5_syllable_valid_masks(batch, max_time_sec)
+        for source in ['syllable', 'vowel', 'consonant']:
+            features.update(
+                self._asvspoof5_cache_source_tensors(
+                    batch,
+                    source,
+                    max_time_sec,
+                    shared_valid_masks=syllable_valid_masks,
+                )
+            )
         return features
 
     def collate_fn_padded(self, batch: list[Sample]) -> Batch:
@@ -1059,10 +1109,6 @@ class DeepfakeDataset(Dataset):
 
             if all(getattr(item, 'asvspoof5_cache', None) is not None for item in batch):
                 cache_features = self._collate_asvspoof5_cache_features(batch, max_time_sec)
-                word_d = cache_features['word_d']
-                word_devi = cache_features['word_devi']
-                word_mu_diff = cache_features['word_mu_diff']
-                word_sid = cache_features['word_sid']
                 syllable_d = cache_features['syllable_d']
                 syllable_devi = cache_features['syllable_devi']
                 syllable_mu_diff = cache_features['syllable_mu_diff']
