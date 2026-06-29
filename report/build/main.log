@@ -1,9 +1,9 @@
-This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex 2026.4.10)  28 JUN 2026 16:23
+This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex 2026.4.10)  30 JUN 2026 00:58
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
-**/Users/icebird/Documents/01_Project/crab/report/main.tex
-(/Users/icebird/Documents/01_Project/crab/report/main.tex
+**main.tex
+(./main.tex
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
 (/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls
@@ -178,6 +178,9 @@ File: xetex.def 2025/11/01 v5.0p Graphics/color driver for xetex
 ))
 \Gin@req@height=\dimen187
 \Gin@req@width=\dimen188
+)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/placeins/placeins.sty
+Package: placeins 2005/04/18  v 2.2
 )
 (/usr/local/texlive/2026/texmf-dist/tex/latex/titlesec/titlesec.sty
 Package: titlesec 2025/01/04 v2.17 Sectioning titles
@@ -799,127 +802,137 @@ Underfull \hbox (badness 1199) in paragraph at lines 46--48
  []
 
 
-Underfull \hbox (badness 1377) in paragraph at lines 52--53
-\TU/times(0)/m/n/12 by reformulating the prediction target as bona
- []
-
-
 Underfull \hbox (badness 3657) in paragraph at lines 53--54
 \TU/times(0)/m/n/12 Montreal-Force-Aligner (MFA), and use three
  []
 
 
-Underfull \hbox (badness 4569) in paragraph at lines 59--64
+Underfull \hbox (badness 4569) in paragraph at lines 58--63
 []\TU/times(0)/m/n/12 The rest of this report is organized as fol-
  []
 
-LaTeX Font Info:    Trying to load font information for U+msa on input line 70.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 69.
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 70.
+LaTeX Font Info:    Trying to load font information for U+msb on input line 69.
 
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 )
-Underfull \hbox (badness 2103) in paragraph at lines 69--73
+Underfull \hbox (badness 2103) in paragraph at lines 68--72
 \TU/times(0)/m/n/12 crafted or explicitly extracted prosodic descriptors.
+ []
+
+
+Underfull \hbox (badness 1389) in paragraph at lines 73--75
+\TU/times(0)/m/n/12 into representation learning and training objectives.
+ []
+
+
+Underfull \hbox (badness 1097) in paragraph at lines 73--75
+\TU/times(0)/m/n/12 improving robustness to expressive, emotional, and
  []
 
 [1
 
 
 ]
-Underfull \hbox (badness 1389) in paragraph at lines 74--76
-\TU/times(0)/m/n/12 into representation learning and training objectives.
- []
-
-
-Underfull \hbox (badness 1097) in paragraph at lines 74--76
-\TU/times(0)/m/n/12 improving robustness to expressive, emotional, and
- []
-
-
-Underfull \hbox (badness 2293) in paragraph at lines 84--88
+Underfull \hbox (badness 2293) in paragraph at lines 81--85
 \TU/times(0)/m/n/12 Contrastive Supervision (MLCS), which adds con-
  []
 
+File: figure/preprocess.png Graphic file (type bmp)
+<figure/preprocess.png>
 
-Underfull \hbox (badness 1783) in paragraph at lines 151--153
+Underfull \hbox (badness 1783) in paragraph at lines 152--156
 []\TU/times(0)/m/n/12 To obtain reliable temporal units for prosodic
  []
 
 [2]
 File: figure/proposed_model_architecture.png Graphic file (type bmp)
 <figure/proposed_model_architecture.png>
-
-Underfull \hbox (badness 4266) in paragraph at lines 221--224
-\TU/times(0)/m/n/12 If an utterance contains only one valid position,
+ [3] [4]
+Underfull \hbox (badness 1308) in paragraph at lines 321--328
+\TU/times(0)/m/n/12 CSL. MPCL is then computed using the ADD la-
  []
 
-[3]
-Underfull \hbox (badness 2042) in paragraph at lines 349--351
-\TU/kaiu(0)/m/n/12 並 在 產 生 \TU/RobotoMono(0)/m/n/12 evaluation_scores.txt \TU/k
-aiu(0)/m/n/12 後 呼 叫
+
+Underfull \hbox (badness 2318) in paragraph at lines 350--354
+\TU/times(0)/m/n/12 the framework to ADD. IEMOCAP contains two-
  []
 
-(build/main.bbl
-Underfull \vbox (badness 2293) has occurred while \output is active []
 
- [4]
-Underfull \hbox (badness 1552) in paragraph at lines 146--151
+Underfull \hbox (badness 1163) in paragraph at lines 355--363
+\TU/times(0)/m/n/12 emotion categories: neutral, happiness, excitement,
+ []
+
+
+Underfull \hbox (badness 2277) in paragraph at lines 364--372
+[]\TU/times(0)/m/n/12 For the reproduced SER experiment, WavLM
+ []
+
+
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [5]
+(build/main.bbl [6]
+Underfull \hbox (badness 1221) in paragraph at lines 117--120
+[]\TU/times(0)/m/n/12 M. Bain, J. Huh, T. Han, and A. Zisserman,
+ []
+
+
+Underfull \hbox (badness 1552) in paragraph at lines 153--158
 \TU/times(0)/m/n/12 Velázquez, T. Thebaud, P. Garcia, N. Dehak,
  []
 
 
-Underfull \hbox (badness 1342) in paragraph at lines 146--151
+Underfull \hbox (badness 1342) in paragraph at lines 153--158
 \TU/times(0)/m/n/12 emotion recognition challenge: Dataset, base-
  []
 
 
-Underfull \hbox (badness 1389) in paragraph at lines 153--158
+Underfull \hbox (badness 1389) in paragraph at lines 160--165
 \TU/times(0)/m/n/12 task1: Tackling class imbalance problem,” in
  []
 
-[5]
-Underfull \hbox (badness 2005) in paragraph at lines 168--173
+
+Underfull \hbox (badness 2005) in paragraph at lines 175--180
 \TU/times(0)/m/n/12 tikos, A. Poulopoulou, E. Georgiou, A. Kat-
  []
 
 
-Underfull \hbox (badness 6316) in paragraph at lines 168--173
+Underfull \hbox (badness 6316) in paragraph at lines 175--180
 \TU/times(0)/m/n/12 samanis, V. Katsouros, and A. Potamianos,
  []
 
 
-Underfull \hbox (badness 1622) in paragraph at lines 168--173
+Underfull \hbox (badness 1622) in paragraph at lines 175--180
 \TU/times(0)/m/n/12 “MEDUSA: A multimodal deep fusion multi-
  []
 
 
-Underfull \hbox (badness 3158) in paragraph at lines 168--173
+Underfull \hbox (badness 3158) in paragraph at lines 175--180
 \TU/times(0)/m/n/12 stage training framework for speech emotion
  []
 
-) [6
-
-] (build/main.aux)
+) [7] (build/main.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2022/08/05>
  ***********
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: F0721A8D158D682292B2285EE393FD90;1589.
+(rerunfilecheck)             Checksum: AA04D84907A7CC94246C117EFBFE2B50;1668.
  ) 
 Here is how much of TeX's memory you used:
- 19210 strings out of 468168
- 433476 string characters out of 5432815
- 879069 words of memory out of 5000000
- 47695 multiletter control sequences out of 15000+600000
- 633564 words of font info for 96 fonts, out of 8000000 for 9000
+ 19206 strings out of 468168
+ 431647 string characters out of 5432815
+ 891578 words of memory out of 5000000
+ 47683 multiletter control sequences out of 15000+600000
+ 634225 words of font info for 101 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
- 78i,13n,96p,1241b,1052s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 78i,17n,96p,1193b,1046s stack positions out of 10000i,1000n,20000p,200000b,200000s
 
-Output written on build/main.xdv (6 pages, 206284 bytes).
+Output written on build/main.xdv (7 pages, 279648 bytes).

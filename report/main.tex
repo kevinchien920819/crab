@@ -29,10 +29,15 @@
 
 \section*{Abstract}
 
-This study repurposes \crab{} (Contrastive Representation and Multimodal Aligned Bottleneck) from its original speech emotion recognition setting to audio deepfake detection.
-The original \crab{} paper builds a bimodal Cross-Modal Transformer with WavLM~\cite{chen2022wavlm} and RoBERTa~\cite{liu2019roberta}, and introduces Multi Layer Contrastive Supervision (MLCS) to apply multi-positive contrastive learning at several intermediate layers, encouraging discriminative speech and text representations before the final classifier~\cite{ueda2026crab}.
-This report transfers the same representation-learning idea to audio deepfake detection: a self-supervised speech encoder extracts waveform representations, the prediction target is changed to bona fide/spoof classification, and evaluation follows ASVspoof-style metrics such as Equal Error Rate (EER) and detection cost functions~\cite{wang2024asvspoof5_scale}.
-The front part of this report focuses on the motivation, related work, backend detection system, and the role of \crab{} as a representation-learning basis for audio deepfake detection.
+This report studies an adaptation of \crab{} (Contrastive Representation and
+Multimodal Aligned Bottleneck) from speech emotion recognition to audio deepfake
+detection. The original speech-text architecture is reformulated as a
+bona fide/spoof classifier by combining self-supervised speech representations
+with a rhythm branch extracted from forced-alignment-based duration features.
+Experiments on ASVspoof 5 compare audio-only, audio-rhythm, and audio-text
+variants with different encoders and contrastive supervision settings. The
+results show that the audio-only Transformer provides the strongest baseline in
+this report, while rhythm fusion and MPCL require further refinement.
 
 \noindent\textbf{Keywords:} audio deepfake detection, ASVspoof, self-supervised speech representation, contrastive learning, \crab
 
@@ -40,45 +45,51 @@ The front part of this report focuses on the motivation, related work, backend d
 
 \section{INTRODUCTION}
 
-Recent neural text-to-speech (TTS) and voice conversion (VC) systems can generate highly natural and speaker-similar speech.
-Therefore,Audio Deepfake Detection (ADD) has become a critical research problem at the intersection of speech processing and information security.
+Recent neural text-to-speech (TTS) and voice conversion (VC) systems can generate highly natural and speaker-similar speech~\cite{yi2023audio}.
+As a result, audio deepfake detection (ADD), which aims to distinguish bona fide speech from spoofed or synthetic speech, has become an important problem in speech processing and information security.
+Reliable ADD systems are especially important because synthetic speech can be used to imitate a speaker's identity, bypass voice-based authentication, or spread misleading audio content.
 
 In recent years, self-supervised learning (SSL) models have become important front-end components for speech-related tasks because they can learn rich representations from large amounts of unlabeled data.
 Models such as wav2vec 2.0~\cite{baevski2020wav2vec2}, HuBERT~\cite{hsu2021hubert}, and WavLM~\cite{chen2022wavlm} have shown strong performance across various downstream tasks, including automatic speech recognition, speaker verification, emotion recognition, and spoofing detection.
+For ADD, these SSL representations provide strong acoustic cues, but synthetic speech may also contain unnatural temporal patterns that are not fully described by frame-level spectral representations alone.
+For example, the duration of syllables, vowels, and consonants, as well as the rhythm between neighboring speech units, may reveal differences between human speech production and generated speech~\cite{warren2025pitch,attorresi2022combining,wang2023crossdataset}.
+
+This report studies whether such rhythm information can be incorporated into the \crab{} framework.
+The original \crab{} model was designed for speech emotion recognition (SER), where speech and text representations are aligned through cross-modal attention and supervised at multiple intermediate layers using Multi Layer Contrastive Supervision (MLCS).
+In this work, we adapt the same representation-learning idea to ADD by replacing the original text branch with a rhythm branch extracted from forced-alignment outputs.
+The goal is to make the adapted architecture and its ablation behavior clear: the experiments compare audio-only, audio-rhythm, and audio-text variants, different sequence encoders, and the effect of contrastive supervision.
 
 
-The main contributions of this work are summarized as follows:
+The main objectives and contributions of this report are summarized as follows:
 \begin{enumerate}
-    \item We adapt the \crab{} framework from SER to ADD by reformulating the prediction target as bona fide/spoof classification.
-    \item We extract prosody feature using WhisperX and Montreal-Force-Aligner (MFA), and use three measurement method.
-    \item We replace the original text branch with a prosody encoder to incorporate prosodic cues that are relevant to synthetic speech detection.
-    \item We apply Multi Layer Contrastive Supervision to intermediate speech-prosody representations, encouraging more discriminative feature learning before final classification.
-    \item We evaluate the adapted model using ASVspoof-style metrics and analyze the effects of prosody features and contrastive supervision.
+    \item We adapt the \crab{} framework from speech emotion recognition (SER) to audio deepfake detection (ADD), reformulating the original emotion classification task as bona fide/spoof classification.
+    \item We construct a syllable-level rhythm branch from forced-alignment outputs, where each utterance is represented by duration-based tokens derived from syllable, vowel, and consonant intervals.
+    \item We describe an audio-rhythm multimodal architecture that encodes SSL speech representations and rhythm representations separately, then aligns them through cross-modal attention.
+    \item We conduct ablation experiments over modality choice, encoder type, and multi-layer contrastive supervision to clarify the role of each component in the adapted detection system.
 \end{enumerate}
 
 The rest of this report is organized as follows.
-Section 2 reviews related work on ADD, self-supervised speech representations, multimodal detection, and \crab{}.
-Section 3 describes the proposed adaptation of \crab{} for ADD and the experimental setup.
-Section 4 presents the experimental results and analysis.
-Section 5 concludes the report.
+Section 2 reviews related work on prosody-based ADD and the original \crab{} model.
+Section 3 describes the proposed methodology, including prosody preprocessing, the rhythm encoder, and the audio-rhythm adaptation of \crab{} for ADD\@.
+Section 4 presents the experimental setup for the SER reproduction and ASVspoof 5 ADD experiments.
+Section 5 reports the SER reproduction results, ADD ablation results, and analysis.
+Section 6 concludes the report.
 
 
 
 \section{RELATED WORK}
-\subsection{Prosody feature in Audio Deepfake}
+\subsection{Prosody Features for Audio Deepfake Detection}
 Early prosody-based methods mainly rely on handcrafted or explicitly extracted prosodic descriptors.
 These approaches commonly use \(F_0\)-based statistics, jitter, shimmer, harmonics-to-noise ratio (HNR), rhythm, pitch, accent-related cues, and phoneme-duration information to characterize unnatural prosodic patterns in synthetic speech~\cite{warren2025pitch,attorresi2022combining,wang2023crossdataset}.
-In particular, Pitch Imperfect~\cite{warren2025pitch} evaluates acoustic-prosodic deepfake detection with mean and standard deviation of \(F_0\), jitter, shimmer, and mean and standard deviation of HNR.
+In particular, Pitch Imperfect~\cite{warren2025pitch} evaluates acoustic-prosodic deepfake detection with mean and standard deviation of \(F_0\), jitter, shimmer, and mean and standard deviation of HNR\@.
 Other feature-fusion methods combine prosody with speaker verification embeddings, pronunciation features, and wav2vec representations to improve synthetic speech detection and cross-dataset generalization~\cite{attorresi2022combining,wang2023crossdataset}.
 
 More recent work incorporates prosody directly into representation learning and training objectives. HuLA~\cite{mahapatra2025hula} uses \(F_0\) prediction and voiced/unvoiced classification as auxiliary tasks so that a self-supervised speech backbone can learn natural prosodic variation, improving robustness to expressive, emotional, and cross-lingual synthetic speech.
 ProSDD~\cite{mahapatra2026prosdd} further models speaker-conditioned prosodic variation through pitch, voice activity, and energy, and learns transferable prosodic representations via supervised masked prediction.
 
-\subsection{Prosody feature measurement}
-
 \subsection{\crab{} model}
 The \crab{} model was first proposed for speech emotion recognition (SER), where speech and text inputs are jointly modeled by a bimodal Cross-Modal Transformer~\cite{ueda2026crab}.
-Its architecture uses WavLM to extract frame-level speech representations and RoBERTa to extract token-level text representations.
+Its architecture uses WavLM to extract frame-level speech representations and RoBERTa~\cite{liu2019roberta} to extract token-level text representations.
 After modality-specific projection and recurrent encoding, cross-modal attention aligns the two streams, and attention pooling converts them into utterance-level representations for emotion classification.
 
 The central training idea in \crab{} is Multi Layer Contrastive Supervision (MLCS), which adds contrastive supervision to several intermediate representations instead of applying supervision only at the final classifier.
@@ -95,12 +106,12 @@ The target distribution assigns probability mass only to candidates that share t
 \[
     c_i =
     \frac{\mathbf{1}_{\mathrm{match}}(a,b_i)}
-    {\sum_{j=1}^{K}\mathbf{1}_{\mathrm{match}}(a,b_j)} .
+    {\sum_{j=1}^{K}\mathbf{1}_{\mathrm{match}}(a,b_j)}.
 \]
 The MPCL loss is the cross-entropy between these two distributions,
 \[
     \mathcal{L}_{\mathrm{MPCL}}
-    = -\sum_{i=1}^{K} c_i \log q_i .
+    = -\sum_{i=1}^{K} c_i \log q_i.
 \]
 Compared with ordinary supervised contrastive learning, this formulation explicitly represents all same-class candidates as multiple positives in a categorical target distribution.
 In MLCS, the final SER objective combines the standard classification loss with the average MPCL loss from all selected CSLs:
@@ -113,21 +124,14 @@ In MLCS, the final SER objective combines the standard classification loss with 
     \sum_{i\in\Omega}
     \mathcal{L}_{\mathrm{MPCL}}(m_i(x), y),
 \]
-where \(\Omega\) denotes the set of layers with CSLs and \(\alpha\) controls the strength of contrastive supervision.
+where \(\Omega\) denotes the set of layers with CSLs, and \(\alpha\) controls the strength of contrastive supervision.
 This design encourages modality-specific, cross-modal, and fused representations to become discriminative before the final prediction layer, which is the part of \crab{} most relevant to our adaptation for audio deepfake detection.
 
 \section{METHODOLOGY}
 \subsection{Prosody Feature Preprocessing}
-\begin{figure*}[!t]
-    \centering
-    \includegraphics[width=0.96\textwidth]{figure/preprocess.png}
-    \caption{Overview of the preprocessing pipeline.}
-    \label{fig:preprocess}
-\end{figure*}
-
 \begin{table}[t]
     \centering
-    \caption{Summary of ASVspoof 5 database~\cite{wang2024asvspoof5_scale} and TextGrid generated after preprocessing.}
+    \caption{Summary of ASVspoof 5 database~\cite{wang2025asvspoof5designcollection} and TextGrid generated after preprocessing.}
     \label{tab:asvspoof5_data}
     \resizebox{\columnwidth}{!}{%
     \begin{tabular}{@{}lS[table-format=6.0]S[table-format=6.0]S[table-format=6.0]S[table-format=6.0]S[table-format=1.2]@{}}
@@ -135,7 +139,7 @@ This design encourages modality-specific, cross-modal, and fused representations
         \multirow{2}{*}{Subset}
         & \multicolumn{2}{c}{Utterances}
         & \multicolumn{2}{c}{TextGrid}
-        & \multicolumn{1}{c}{Drop rate} \\
+        & \multicolumn{1}{c}{Missing rate} \\
         \cmidrule(lr){2-3}
         \cmidrule(l){4-5}
         & \multicolumn{1}{c}{Bona fide}
@@ -152,21 +156,32 @@ This design encourages modality-specific, cross-modal, and fused representations
     }
 \end{table}
 
-To obtain reliable temporal units for prosodic feature extraction, we first preprocess each utterance through a three-stage pipeline consisting of transcription, forced alignment, and syllable boundary generation.
-In the transcription stage, WhisperX~\cite{bain23interspeech} is applied to the raw audio signals to generate utterance-level transcripts. These transcripts serve as the textual input for the subsequent alignment procedure.
+To obtain reliable temporal units for prosodic feature extraction,
+we first preprocess each utterance through a three-stage pipeline consisting of transcription, forced alignment, and syllable boundary generation.
+Figure~\ref{fig:preprocess} illustrates the overall process flow-chart of prosody feature preprocessing.
+In the transcription stage, WhisperX~\cite{bain23interspeech} is applied to the raw audio signals to generate utterance-level transcripts.
+These transcripts serve as the textual input for the subsequent alignment procedure.
 
-Given the audio-transcript pairs, we then employ the Montreal Forced Aligner (MFA) to obtain fine-grained temporal alignments. Before alignment, the generated transcripts are scanned for out-of-vocabulary (OOV) words with respect to the pronunciation dictionary. If OOV entries are detected, a grapheme-to-phoneme (G2P) model is used to predict their pronunciations, and the pronunciation dictionary is updated accordingly. This OOV detection and dictionary expansion process is repeated until all transcript tokens can be covered by the dictionary. MFA is then used to align the speech signal with the normalized transcript, producing a TextGrid file that contains word- and phone-level timing information.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\columnwidth]{figure/preprocess.png}
+    \caption{Overview of the preprocessing pipeline.}
+    \label{fig:preprocess}
+\end{figure}
 
-Finally, the TextGrid output is passed to the syllabification module. We use Syllabifr to convert the phone-level alignment into syllable-level boundaries. These syllable boundaries provide the temporal anchors required for extracting prosodic descriptors, such as duration-related features and syllable-level rhythmic patterns. Through this preprocessing procedure, each ASVspoof5 utterance is transformed into a structured representation with transcript, phonetic alignment, and syllable timing information for downstream prosody analysis.
+Given the audio-transcript pairs, we then employ the Montreal Forced Aligner (MFA) to obtain fine-grained temporal alignments~\cite{mfa_english_us_arpa_acoustic_2024}.
+
+Before alignment, the generated transcripts are scanned for out-of-vocabulary (OOV) words with respect to the pronunciation dictionary.
+If OOV entries are detected, a grapheme-to-phoneme (G2P) model is used to predict their pronunciations, and the pronunciation dictionary is updated accordingly.
+This OOV detection and dictionary expansion process is repeated until all transcript tokens can be covered by the dictionary.
+
+After the dictionary covers all transcript tokens, MFA is used to align the speech signal with the normalized transcript, producing a TextGrid file that contains word- and phone-level timing information.
+
+Finally, the TextGrid output is passed to our syllabification module, which converts the phone-level alignment into syllable-level boundaries.
+These syllable boundaries provide the temporal anchors required for extracting prosodic descriptors, such as duration-related features and syllable-level rhythmic patterns.
+Through this preprocessing procedure, each ASVspoof5 utterance is transformed into a structured representation with transcript, phonetic alignment, and syllable timing information for downstream prosody analysis.
 
 \subsection{Prosody Encoder}
-\begin{figure*}[!t]
-    \centering
-    \includegraphics[width=0.98\textwidth]{figure/proposed_model_architecture.png}
-    \caption{Overall architecture of the proposed audio-rhythm \crab{} model.}
-    \label{fig:proposed_model_architecture}
-\end{figure*}
-
 Following the rhythm encoder design of Liu and Lu~\cite{liu2024tone}, we encode
 prosodic timing as a sequence of duration tokens. The rhythm encoder represents
 each valid syllable position using three interval types:
@@ -175,8 +190,8 @@ each valid syllable position using three interval types:
 \]
 where \(\mathrm{SYL}\) denotes the whole syllable interval, 
 \(\mathrm{V}\) denotes the vocalic interval,
-and \(\mathrm{CON}\)denotes the consonant interval only .
- For interval type \(s\in\mathcal{S}\), \(\mathrm{Int}_{s,i}\) denotes the duration of the
+and \(\mathrm{CONS}\) denotes the consonant interval.
+For interval type \(s\in\mathcal{S}\), \(\mathrm{Int}_{s,i}\) denotes the duration of the
 \(i\)-th interval in an utterance with \(N\) valid syllable positions.
 
 For each interval type, we compute three durational measurements. The first is
@@ -189,7 +204,7 @@ same interval type:
 \mathrm{Int}_{s,i}
 -
 \mu_{Int_{s,i}}
-\],
+\]
 The third is the local durational difference between consecutive intervals,
 defined as
 \[
@@ -215,37 +230,213 @@ the speech rhythm of an utterance:
 }{n-1}.
 \]
 
-The result 
-\(
-D = \{d_1, d_2, \ldots, d_n\} \in \mathbb{R}^{9 \times n}
-\), represent a \(n\)-length sequence of duration tokens with nine-dimensional feature measured for durational variability.
-
-Each duration token is projected into the model dimension and add with positional information same as original Transformer~\cite{vaswani2017attention} using.
-resulting a single
-
-
-
-
-Each duration token is projected into the model dimension and combined with
-positional information:
+The resulting duration sequence is denoted as
 \[
-\mathbf{e}_{b,i}
-=
-\mathrm{LN}
-\left(
-\mathbf{W}_d\mathbf{d}_{b,i}+\mathbf{p}_i
-\right),
-\quad
-\mathbf{W}_d\in\mathbb{R}^{d_e\times 9},
+D = [d_1, d_2, \ldots, d_n] \in \mathbb{R}^{9 \times n},
 \]
-where \(\mathbf{p}_i\) is the positional encoding.  The resulting rhythm
-embedding sequence is used as the prosody branch for the downstream audio
-deepfake detector.
+where each duration token \(d_i \in \mathbb{R}^9\) contains nine features that capture durational variability.
+Each token is first linearly projected into a \(d_{model}\)-dimensional representation using a learnable projection weight
+\(W_d \in \mathbb{R}^{d_{model} \times 9}\).
+To preserve the temporal order of the sequence, sinusoidal positional encoding is then added to the projected duration embeddings, following the original Transformer~\cite{vaswani2017attention}.
+Finally, the input embedding of the rhythm encoder is defined as
+\[
+e_i = LN\left(W_d \cdot d_i + p_i\right),
+\]
+where \(LN(\cdot)\) denotes layer normalization, and \(p_i \in \mathbb{R}^{d_{model}}\) is the positional encoding vector at position \(i\).
+
+\begin{figure*}[!t]
+    \centering
+    \includegraphics[width=0.98\textwidth]{figure/proposed_model_architecture.png}
+    \caption{Overall architecture of the proposed audio-rhythm \crab{} model.}
+    \label{fig:proposed_model_architecture}
+\end{figure*}
+
+\subsection{\crab{} for ADD}
+Figure~\ref{fig:proposed_model_architecture} shows the proposed adaptation of
+\crab{} for audio deepfake detection. The original \crab{} model is designed
+for SER and uses a speech-text Cross-Modal Transformer with WavLM and
+RoBERTa~\cite{liu2019roberta} in the original \crab{} design~\cite{ueda2026crab}. In this work, we keep the main representation
+learning principle of \crab{}, but reformulate the architecture for ADD\@. The
+task label is changed from an emotion category to a binary deepfake label
+\(y \in \{0,1\}\), where \(0\) denotes bona fide speech and \(1\) denotes spoofed
+speech. 
+More importantly, the text branch is replaced by a rhythm branch. Although
+transcript or contextual information can be useful in some context-dependent ADD
+settings, lexical content is not a consistently necessary or reliable cue for
+spoof detection. In contrast, synthetic speech often exhibits acoustic and
+prosodic artifacts in duration, syllable timing, pitch, and vowel-consonant
+rhythm patterns. The resulting model is an audio-rhythm \crab{} network.
+
+
+Given an input waveform \(x\), a self-supervised speech encoder first extracts
+a frame-level acoustic representation \(S\):
+\[
+S = f_{\mathrm{ssl}}(x), \qquad
+S \in \mathbb{R}^{F \times D_s}.
+\]
+Here, \(f_{\mathrm{ssl}}(\cdot)\) denotes the SSL speech encoder, \(F\) is the
+number of speech frames, and \(D_s\) is the speech feature dimension. In this
+report, the SSL encoder can be instantiated with wav2vec 2.0/XLS-R style
+representations~\cite{baevski2020wav2vec2}. This branch provides the model with
+frame-level acoustic information from the waveform.
+
+In parallel, the duration sequence \(D\) produced by the prosody encoder is
+converted into a rhythm representation \(R\):
+\[
+R = f_{\mathrm{rhythm}}(D), \qquad
+R \in \mathbb{R}^{L \times D_r}.
+\]
+Here, \(f_{\mathrm{rhythm}}(\cdot)\) denotes the rhythm encoder, \(L\) is the
+number of rhythm tokens, and \(D_r\) is the rhythm feature dimension. This branch
+summarizes syllable-level timing information, so it describes how speech units
+are distributed over time rather than what words are spoken.
+
+Because the speech and rhythm representations have different feature dimensions,
+they are projected into a shared hidden space before fusion:
+\[
+\tilde{S} = LN(W_s \cdot S), \qquad
+\tilde{R} = LN(W_r \cdot R).
+\]
+In this equation, \(W_s\) and \(W_r\) are modality-specific projection matrices,
+and \(LN(\cdot)\) denotes layer normalization. The projected sequences
+\(\tilde{S}\) and \(\tilde{R}\) therefore have compatible hidden dimensions,
+which allows the later cross-modal attention block to compare the two streams.
+
+After projection, each modality is encoded by its own bidirectional GRU:
+\[
+H_s = \mathrm{BiGRU}_s(\tilde{S}), \qquad
+H_r = \mathrm{BiGRU}_r(\tilde{R}).
+\]
+The resulting representations satisfy
+\(H_s \in \mathbb{R}^{F \times 2h}\) and
+\(H_r \in \mathbb{R}^{L \times 2h}\), where \(h\) is the hidden size of one GRU
+direction. This step lets each branch model temporal context within its own
+sequence before the two modalities interact.
+
+The cross-modal block then aligns the two streams through multi-head attention.
+The speech stream attends to the rhythm stream as follows:
+\[
+A_s = \mathrm{MHA}(Q=H_s, K=H_r, V=H_r).
+\]
+In this attention operation, speech features are used as queries, while rhythm
+features are used as keys and values. The output \(A_s\) can be interpreted as
+rhythm-aware speech information.
+
+The reverse direction is computed in the same way, where rhythm features attend
+to the speech stream:
+\[
+A_r = \mathrm{MHA}(Q=H_r, K=H_s, V=H_s).
+\]
+Here, rhythm features are used as queries, and speech features are used as keys
+and values. The output \(A_r\) can be interpreted as speech-aware rhythm
+information.
+
+The attention outputs are then added back to their original unimodal
+representations through residual connections:
+\[
+Z_s = H_s + A_s, \qquad Z_r = H_r + A_r.
+\]
+The residual design keeps the original speech and rhythm information while
+injecting cross-modal context. As a result, \(Z_s\) is the speech representation
+after rhythm alignment, and \(Z_r\) is the rhythm representation after speech
+alignment.
+
+Since the final prediction is made at the utterance level, attention pooling is
+used to summarize each aligned sequence into one fixed-length vector:
+\[
+z_s = \mathrm{AttPool}(Z_s), \qquad
+z_r = \mathrm{AttPool}(Z_r).
+\]
+Here, \(z_s\) and \(z_r\) are utterance-level speech and rhythm vectors,
+respectively. Attention pooling allows the model to assign larger weights to
+frames or rhythm tokens that are more informative for spoof detection.
+
+The two utterance-level vectors are concatenated to form the final multimodal
+representation:
+\[
+C = [z_s;z_r] \in \mathbb{R}^{4h}.
+\]
+The vector \(C\) contains information from both the acoustic stream and the
+rhythm stream. It is then passed through the classifier block, which consists of
+layer normalization, a fully connected layer, ReLU activation, dropout, and a
+final fully connected layer that outputs two logits for bona fide and spoof
+classes.
+
+We also adapt Multi Layer Contrastive Supervision (MLCS) from the original
+\crab{} model to the ADD setting. Each green-highlighted module in
+Figure~\ref{fig:proposed_model_architecture} is connected to a Contrastive
+Supervision Leg (CSL), implemented as an FC-ReLU-FC projection head. For the
+\(i\)-th supervised layer, the CSL maps an intermediate representation
+\(m_i(x)\) into a contrastive embedding \(u_i\):
+\[
+u_i = g_i(m_i(x)).
+\]
+In this equation, \(g_i(\cdot)\) is the projection head of the \(i\)-th CSL\@.
+The MPCL loss is then computed using the ADD label: samples with the same bona
+fide/spoof label are treated as positives, and samples with different labels are
+treated as negatives. Therefore, MLCS encourages modality-specific, aligned, and
+fused representations to become label-discriminative before the final classifier.
+
+The overall training objective combines the ordinary classification loss with
+the averaged contrastive loss from all selected CSLs:
+\[
+\mathcal{L}_{\mathrm{add}}
+=
+\mathcal{L}_{\mathrm{CE}}(o,y)
++
+\alpha \frac{1}{|\Omega|}
+\sum_{i \in \Omega}
+\mathcal{L}_{\mathrm{MPCL}}(u_i,y).
+\]
+Here, \(o\) denotes the classifier logits, \(y\) is the bona fide/spoof label,
+\(\Omega\) is the set of layers with CSLs, and \(\alpha\) controls the strength
+of contrastive supervision. During inference, the CSL branches are removed, and
+prediction only uses the audio-rhythm fusion path and the final classifier.
+This keeps inference simple while using MLCS during training to improve the
+separability of bona fide and spoof representations.
+
+
 \section{Experimental Setup}
-\subsection{Dataset}
+\subsection{IEMOCAP}
+We use IEMOCAP~\cite{busso2008iemocap} to reproduce the SER setting of the
+original \crab{} model before adapting the framework to ADD\@. IEMOCAP contains
+two-speaker conversations collected from five sessions, with utterance-level emotion
+annotations and corresponding transcripts.
+
+The IEMOCAP data collection mainly targets five emotion categories: neutral,
+happiness, excitement, anger, and sadness. Following the common four-class SER
+protocol, happiness and excitement are merged into the same positive emotion
+class. The final label set is therefore
+\(\{\mathrm{neutral}, \mathrm{happy/excited}, \mathrm{angry}, \mathrm{sad}\}\).
+The dataset is split by speaker/session to avoid direct speaker leakage:
+Session 5 is used as the test set, one actor from Session 4 is used as the
+development set, and the remaining utterances are used for training.
+
+For the reproduced SER experiment, WavLM Large~\cite{chen2022wavlm} is used as the speech encoder
+and RoBERTa Base~\cite{liu2019roberta} is used as the text encoder. The model is trained for 20 epochs
+with AdamW and a CosineAnnealingLR scheduler. We set the learning rate of the
+SSL encoder and text encoder to \(1 \times 10^{-6}\), and the learning rate of
+the SER classification head to \(1 \times 10^{-5}\). The batch size is set to 4
+with gradient accumulation over 8 steps. The training objective combines
+weighted cross-entropy with MPCL, and the best checkpoint is selected according
+to development-set UAR\@. We report both WAR and UAR on the test set.
+
+\subsection{ASVspoof 5 Dataset}
+We use ASVspoof 5~\cite{wang2025asvspoof5designcollection} as a benchmark to evaluate the performance of our model.
+A common practical preprocessing choice is to use a fixed-length strategy,
+where each utterance is normalized to a 10-second segment by cropping longer audio and repeating or padding shorter audio.
+Although this setting is practical for batch-based training, it may discard spoofing cues located outside the selected segment. 
+In contrast, we process the entire utterance without fixed-duration cropping, allowing the model to exploit the full temporal information available in the ASVspoof 5 recordings.
+
+Table~\ref{tab:asvspoof5_data} summarizes the ASVspoof 5 preprocessing results in this study.
+ Models are trained on the training set and validated on the validation set to select the best checkpoint for testing.
+
+Our proposed \crab{} for ADD models is trained with a learning rate of \(1 \times 10^{-5}\) using the AdamW optimizer,
+without any data augmentation. The number of training epochs is set to 20, the batch size is set to 8,
+and gradient accumulation is performed over 8 steps.
 
 
-\section{RESULT}
+\section{RESULTS}
 We first reproduce the SER setting of the \crab{} model on IEMOCAP~\cite{busso2008iemocap} and MSP-Podcast 2.0~\cite{busso2025msppodcast}.
 Table~\ref{tab:ser_results} presents a comparative evaluation of all baseline systems and the proposed \crab{} model.
 The bold values indicate the best performance within each group,
@@ -267,9 +458,9 @@ The bold values indicate the best performance within each group,
         MemoCMT~\cite{khanmemocmt2025} & 0.6964 & 0.7123 & \textbf{0.6239} & 0.3285 \\
         Medusa~\cite{chatzichristodoulou2025interspeech} & 0.6605 & 0.6778 & 0.4157 & 0.3549 \\
         \rowcolor{crabgreen}
-        \crab{} & \underline{\textbf{0.7348}} & \textbf{0.7585} & \underline{0.5232} & \textbf{0.4390} \\
+        \crab{}~\cite{ueda2026crab} & \underline{0.7348} & \textbf{0.7585} & \underline{0.5232} & \textbf{0.4390} \\
         \midrule
-        \crab{} (re-implement) & 0.7365 & \underline{0.74292} & 0.4997 & \underline{0.4194} \\
+        \crab{} (re-implement) & \textbf{0.7365} & \underline{0.74292} & 0.4997 & \underline{0.4194} \\
         \bottomrule
     \end{tabular}
     }
@@ -277,7 +468,7 @@ The bold values indicate the best performance within each group,
 
 \begin{table}[t]
     \centering
-    \caption{Comparison of audio deepfake detection performance on ASVspoof5~\cite{wang2024asvspoof5_scale}.}
+    \caption{Comparison of audio deepfake detection performance on ASVspoof5~\cite{wang2025asvspoof5designcollection}.}
     \label{tab:deepfake_result}
     \resizebox{\columnwidth}{!}{%
     \begin{tabular}{@{}llccccc@{}}
@@ -313,8 +504,41 @@ The bold values indicate the best performance within each group,
     }
 \end{table}
 
+Table~\ref{tab:ser_results} shows that the re-implemented \crab{} model obtains
+competitive performance on IEMOCAP, with a WAR of 0.7365 and a UAR of 0.7429.
+Although it does not exactly match the reported \crab{} score, the result
+suggests that the main SER architecture is reasonably reproduced and can be used
+as the basis for the ADD adaptation.
+
+Table~\ref{tab:deepfake_result} shows that the audio-only Transformer without
+MPCL achieves the best ADD performance, with an EER of 4.81\%, a min-DCF of
+0.1358, and an act-DCF of 0.1425. Adding rhythm features does not improve the
+result in the current experiments, and MPCL is also not consistently helpful.
+This does not necessarily mean that rhythm information is useless. A more likely
+interpretation is that the present multimodal pipeline may still be affected by
+implementation or preprocessing issues, such as alignment errors, syllable
+boundary noise, padding and masking problems, modality imbalance, or loss
+weighting. The pure-audio model has a simpler data path and is therefore less
+exposed to these possible sources of error. For this reason, the ADD results
+should be viewed as preliminary ablations that identify where the audio-rhythm
+model needs further debugging and refinement.
+
 \section{CONCLUSION}
-In this work, we adapt \crab{} framework in ADD 
+This report adapted the \crab{} framework from speech emotion recognition to
+audio deepfake detection by reformulating the task as bona fide/spoof
+classification and replacing the original text branch with a rhythm branch. The
+adapted model combines SSL speech representations, syllable-level duration
+features, cross-modal attention, attention pooling, and Multi Layer Contrastive
+Supervision to study audio-rhythm fusion for ADD.
+
+The ablation results show that SSL-based audio representations remain a strong
+baseline, with the audio-only Transformer setting achieving the best ADD
+performance in this report. Adding rhythm features or MPCL does not consistently
+improve performance, suggesting that rhythm information is sensitive to
+alignment quality, feature design, and fusion strategy. Future work should
+improve rhythm feature reliability and explore more robust multimodal fusion
+before the audio-rhythm model can be considered fully optimized.
+
 \bibliographystyle{IEEEtran}
 \bibliography{references}
 

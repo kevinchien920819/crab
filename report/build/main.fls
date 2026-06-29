@@ -2,7 +2,7 @@ PWD /Users/icebird/Documents/01_Project/crab/report
 INPUT /usr/local/texlive/2026/texmf.cnf
 INPUT /usr/local/texlive/2026/texmf-dist/web2c/texmf.cnf
 INPUT /usr/local/texlive/2026/texmf-var/web2c/xetex/xelatex.fmt
-INPUT /Users/icebird/Documents/01_Project/crab/report/main.tex
+INPUT main.tex
 OUTPUT build/main.log
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls
@@ -59,6 +59,8 @@ INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/graphics-cfg/graphics.cfg
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/graphics-def/xetex.def
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/graphics-def/xetex.def
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/graphics-def/xetex.def
+INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/placeins/placeins.sty
+INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/placeins/placeins.sty
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/titlesec/titlesec.sty
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/titlesec/titlesec.sty
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/fancyhdr/fancyhdr.sty
@@ -196,9 +198,15 @@ INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmr12.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmr8.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmr6.tfm
 OUTPUT build/main.xdv
+INPUT ./figure/preprocess.png
+INPUT ./figure/preprocess.png
+INPUT ./figure/preprocess.png
 INPUT ./figure/proposed_model_architecture.png
 INPUT ./figure/proposed_model_architecture.png
 INPUT ./figure/proposed_model_architecture.png
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex7.tfm
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/amsfonts/symbols/msam5.tfm
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/amsfonts/symbols/msbm5.tfm
 INPUT build/main.bbl
 INPUT build/main.bbl
 INPUT build/main.bbl

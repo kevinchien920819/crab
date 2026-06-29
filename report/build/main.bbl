@@ -47,13 +47,15 @@ L.~H. Ueda, J.~G.~T. Lima, and P.~D.~P. Costa, ``{Crab}: Multi layer
   \url{https://arxiv.org/abs/2603.23673}
 \BIBentrySTDinterwordspacing
 
-\bibitem{wang2024asvspoof5_scale}
+\bibitem{wang2025asvspoof5designcollection}
 \BIBentryALTinterwordspacing
-X.~Wang, H.~Delgado, H.~Tak, J.-w. Jung, H.-j. Shim, M.~Todisco, I.~Kukanov,
-  X.~Liu, M.~Sahidullah, T.~Kinnunen, N.~Evans, K.~A. Lee, and J.~Yamagishi,
-  ``{ASVspoof} 5: Crowdsourced speech data, deepfakes, and adversarial attacks
-  at scale,'' 2024, aSVspoof 5 Workshop, Interspeech 2024 Satellite. [Online].
-  Available: \url{https://arxiv.org/abs/2408.08739}
+X.~Wang, H.~Delgado, H.~Tak, J.~weon Jung, H.~jin Shim, M.~Todisco, I.~Kukanov,
+  X.~Liu, M.~Sahidullah, T.~Kinnunen, N.~Evans, K.~A. Lee, J.~Yamagishi,
+  M.~Jeong, G.~Zhu, Y.~Zang, Y.~Zhang, S.~Maiti, F.~Lux, N.~Müller, W.~Zhang,
+  C.~Sun, S.~Hou, S.~Lyu, S.~L. Maguer, C.~Gong, H.~Guo, L.~Chen, and V.~Singh,
+  ``Asvspoof 5: Design, collection and validation of resources for spoofing,
+  deepfake, and adversarial attack detection using crowdsourced speech,'' 2025.
+  [Online]. Available: \url{https://arxiv.org/abs/2502.08857}
 \BIBentrySTDinterwordspacing
 
 \bibitem{baevski2020wav2vec2}
@@ -111,19 +113,24 @@ A.~Mahapatra, I.~R. Ulgen, K.~A. Lee, N.~Andrews, and B.~Sisman, ``{ProSDD}:
   [Online]. Available: \url{https://arxiv.org/abs/2604.13229}
 \BIBentrySTDinterwordspacing
 
-\bibitem{bain2023whisperx}
-\BIBentryALTinterwordspacing
-M.~Bain, J.~Huh, T.~Han, and A.~Zisserman, ``{WhisperX}: Time-accurate speech
-  transcription of long-form audio,'' in \emph{Interspeech 2023}, 2023, pp.
-  4489--4493. [Online]. Available:
-  \url{https://www.isca-archive.org/interspeech_2023/bain23_interspeech.html}
-\BIBentrySTDinterwordspacing
+\bibitem{bain23interspeech}
+M.~Bain, J.~Huh, T.~Han, and A.~Zisserman, ``{WhisperX: Time-Accurate Speech
+  Transcription of Long-Form Audio},'' in \emph{{Interspeech 2023}}, 2023, pp.
+  4489--4493.
 
 \bibitem{liu2024tone}
 Y.-F. Liu and X.-L. Lu, ``Learning and consolidating the contextualized contour
   representations of tones from f0 sequences and durational variations via
   transformers,'' \emph{The Journal of the Acoustical Society of America}, vol.
   156, no.~5, pp. 3353--3372, 2024.
+
+\bibitem{vaswani2017attention}
+\BIBentryALTinterwordspacing
+A.~Vaswani, N.~Shazeer, N.~Parmar, J.~Uszkoreit, L.~Jones, A.~N. Gomez,
+  L.~Kaiser, and I.~Polosukhin, ``Attention is all you need,'' in
+  \emph{Advances in Neural Information Processing Systems}, vol.~30, 2017.
+  [Online]. Available: \url{https://arxiv.org/abs/1706.03762}
+\BIBentrySTDinterwordspacing
 
 \bibitem{busso2008iemocap}
 \BIBentryALTinterwordspacing
