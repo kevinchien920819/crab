@@ -21,41 +21,11 @@
 \providecommand{\BIBdecl}{\relax}
 \BIBdecl
 
-\bibitem{chen2022wavlm}
+\bibitem{yi2023audio}
 \BIBentryALTinterwordspacing
-S.~Chen, C.~Wang, Z.~Chen, Y.~Wu, S.~Liu, Z.~Chen, J.~Li, N.~Kanda,
-  T.~Yoshioka, X.~Xiao, J.~Wu, L.~Zhou, S.~Ren, Y.~Qian, Y.~Qian, J.~Wu,
-  M.~Zeng, X.~Yu, and F.~Wei, ``Wavlm: Large-scale self-supervised pre-training
-  for full stack speech processing,'' \emph{IEEE Journal of Selected Topics in
-  Signal Processing}, vol.~16, no.~6, pp. 1505--1518, 2022. [Online].
-  Available: \url{https://arxiv.org/abs/2110.13900}
-\BIBentrySTDinterwordspacing
-
-\bibitem{liu2019roberta}
-\BIBentryALTinterwordspacing
-Y.~Liu, M.~Ott, N.~Goyal, J.~Du, M.~Joshi, D.~Chen, O.~Levy, M.~Lewis,
-  L.~Zettlemoyer, and V.~Stoyanov, ``Roberta: A robustly optimized bert
-  pretraining approach,'' 2019. [Online]. Available:
-  \url{https://arxiv.org/abs/1907.11692}
-\BIBentrySTDinterwordspacing
-
-\bibitem{ueda2026crab}
-\BIBentryALTinterwordspacing
-L.~H. Ueda, J.~G.~T. Lima, and P.~D.~P. Costa, ``{Crab}: Multi layer
-  contrastive supervision to improve speech emotion recognition under both
-  acted and natural speech condition,'' 2026. [Online]. Available:
-  \url{https://arxiv.org/abs/2603.23673}
-\BIBentrySTDinterwordspacing
-
-\bibitem{wang2025asvspoof5designcollection}
-\BIBentryALTinterwordspacing
-X.~Wang, H.~Delgado, H.~Tak, J.~weon Jung, H.~jin Shim, M.~Todisco, I.~Kukanov,
-  X.~Liu, M.~Sahidullah, T.~Kinnunen, N.~Evans, K.~A. Lee, J.~Yamagishi,
-  M.~Jeong, G.~Zhu, Y.~Zang, Y.~Zhang, S.~Maiti, F.~Lux, N.~Müller, W.~Zhang,
-  C.~Sun, S.~Hou, S.~Lyu, S.~L. Maguer, C.~Gong, H.~Guo, L.~Chen, and V.~Singh,
-  ``Asvspoof 5: Design, collection and validation of resources for spoofing,
-  deepfake, and adversarial attack detection using crowdsourced speech,'' 2025.
-  [Online]. Available: \url{https://arxiv.org/abs/2502.08857}
+J.~Yi, C.~Wang, J.~Tao, X.~Zhang, C.~Y. Zhang, and Y.~Zhao, ``Audio deepfake
+  detection: A survey,'' 2023, preprint. [Online]. Available:
+  \url{https://arxiv.org/abs/2308.14970}
 \BIBentrySTDinterwordspacing
 
 \bibitem{baevski2020wav2vec2}
@@ -71,6 +41,16 @@ W.-N. Hsu, B.~Bolte, Y.-H.~H. Tsai, K.~Lakhotia, R.~Salakhutdinov, and
   A.~Mohamed, ``Hubert: Self-supervised speech representation learning by
   masked prediction of hidden units,'' 2021. [Online]. Available:
   \url{https://arxiv.org/abs/2106.07447}
+\BIBentrySTDinterwordspacing
+
+\bibitem{chen2022wavlm}
+\BIBentryALTinterwordspacing
+S.~Chen, C.~Wang, Z.~Chen, Y.~Wu, S.~Liu, Z.~Chen, J.~Li, N.~Kanda,
+  T.~Yoshioka, X.~Xiao, J.~Wu, L.~Zhou, S.~Ren, Y.~Qian, Y.~Qian, J.~Wu,
+  M.~Zeng, X.~Yu, and F.~Wei, ``Wavlm: Large-scale self-supervised pre-training
+  for full stack speech processing,'' \emph{IEEE Journal of Selected Topics in
+  Signal Processing}, vol.~16, no.~6, pp. 1505--1518, 2022. [Online].
+  Available: \url{https://arxiv.org/abs/2110.13900}
 \BIBentrySTDinterwordspacing
 
 \bibitem{warren2025pitch}
@@ -113,10 +93,45 @@ A.~Mahapatra, I.~R. Ulgen, K.~A. Lee, N.~Andrews, and B.~Sisman, ``{ProSDD}:
   [Online]. Available: \url{https://arxiv.org/abs/2604.13229}
 \BIBentrySTDinterwordspacing
 
+\bibitem{ueda2026crab}
+\BIBentryALTinterwordspacing
+L.~H. Ueda, J.~G.~T. Lima, and P.~D.~P. Costa, ``{Crab}: Multi layer
+  contrastive supervision to improve speech emotion recognition under both
+  acted and natural speech condition,'' 2026. [Online]. Available:
+  \url{https://arxiv.org/abs/2603.23673}
+\BIBentrySTDinterwordspacing
+
+\bibitem{liu2019roberta}
+\BIBentryALTinterwordspacing
+Y.~Liu, M.~Ott, N.~Goyal, J.~Du, M.~Joshi, D.~Chen, O.~Levy, M.~Lewis,
+  L.~Zettlemoyer, and V.~Stoyanov, ``Roberta: A robustly optimized bert
+  pretraining approach,'' 2019. [Online]. Available:
+  \url{https://arxiv.org/abs/1907.11692}
+\BIBentrySTDinterwordspacing
+
+\bibitem{wang2025asvspoof5designcollection}
+\BIBentryALTinterwordspacing
+X.~Wang, H.~Delgado, H.~Tak, J.~weon Jung, H.~jin Shim, M.~Todisco, I.~Kukanov,
+  X.~Liu, M.~Sahidullah, T.~Kinnunen, N.~Evans, K.~A. Lee, J.~Yamagishi,
+  M.~Jeong, G.~Zhu, Y.~Zang, Y.~Zhang, S.~Maiti, F.~Lux, N.~Müller, W.~Zhang,
+  C.~Sun, S.~Hou, S.~Lyu, S.~L. Maguer, C.~Gong, H.~Guo, L.~Chen, and V.~Singh,
+  ``Asvspoof 5: Design, collection and validation of resources for spoofing,
+  deepfake, and adversarial attack detection using crowdsourced speech,'' 2025.
+  [Online]. Available: \url{https://arxiv.org/abs/2502.08857}
+\BIBentrySTDinterwordspacing
+
 \bibitem{bain23interspeech}
 M.~Bain, J.~Huh, T.~Han, and A.~Zisserman, ``{WhisperX: Time-Accurate Speech
   Transcription of Long-Form Audio},'' in \emph{{Interspeech 2023}}, 2023, pp.
   4489--4493.
+
+\bibitem{mfa_english_us_arpa_acoustic_2024}
+\BIBentryALTinterwordspacing
+M.~McAuliffe and M.~Sonderegger, ``English (us) arpa acoustic model v3.0.0,''
+  Tech. Rep., Feb 2024. [Online]. Available:
+  \url{https://mfa-models.readthedocs.io/acoustic/English/English (US) ARPA
+  acoustic model v3_0_0.html}
+\BIBentrySTDinterwordspacing
 
 \bibitem{liu2024tone}
 Y.-F. Liu and X.-L. Lu, ``Learning and consolidating the contextualized contour

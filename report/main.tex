@@ -96,34 +96,38 @@ The central training idea in \crab{} is Multi Layer Contrastive Supervision (MLC
 Each supervised layer is connected to a Contrastive Supervision Leg (CSL), a small projection head that maps the intermediate representation into a contrastive embedding space.
 The CSL is trained with Multi Positive Contrastive Learning (MPCL), where samples with the same emotion label are treated as positives and samples with different labels are treated as negatives.
 For an anchor embedding \(a\) and candidate embeddings \(\{b_i\}_{i=1}^{K}\), MPCL first defines a similarity distribution
-\[
+\begin{equation}
+    \label{eq:mpcl_similarity}
     q_i =
     \frac{\exp(a \cdot b_i / \tau)}
     {\sum_{j=1}^{K}\exp(a \cdot b_j / \tau)},
-\]
+\end{equation}
 where \(\tau\) is a temperature parameter and embeddings are \(\ell_2\)-normalized.
 The target distribution assigns probability mass only to candidates that share the same label as the anchor:
-\[
+\begin{equation}
+    \label{eq:mpcl_target}
     c_i =
     \frac{\mathbf{1}_{\mathrm{match}}(a,b_i)}
     {\sum_{j=1}^{K}\mathbf{1}_{\mathrm{match}}(a,b_j)}.
-\]
+\end{equation}
 The MPCL loss is the cross-entropy between these two distributions,
-\[
+\begin{equation}
     \mathcal{L}_{\mathrm{MPCL}}
     = -\sum_{i=1}^{K} c_i \log q_i.
-\]
+\end{equation}
 Compared with ordinary supervised contrastive learning, this formulation explicitly represents all same-class candidates as multiple positives in a categorical target distribution.
 In MLCS, the final SER objective combines the standard classification loss with the average MPCL loss from all selected CSLs:
-\[
+\begin{equation}
+    \begin{aligned}
     \mathcal{L}_{\mathrm{ser}}
-    =
+    &=
     \mathcal{L}_{\mathrm{CE}}(m_K(x), y)
     +
     \alpha \frac{1}{|\Omega|}
     \sum_{i\in\Omega}
     \mathcal{L}_{\mathrm{MPCL}}(m_i(x), y),
-\]
+    \end{aligned}
+\end{equation}
 where \(\Omega\) denotes the set of layers with CSLs, and \(\alpha\) controls the strength of contrastive supervision.
 This design encourages modality-specific, cross-modal, and fused representations to become discriminative before the final prediction layer, which is the part of \crab{} most relevant to our adaptation for audio deepfake detection.
 
@@ -185,9 +189,9 @@ Through this preprocessing procedure, each ASVspoof5 utterance is transformed in
 Following the rhythm encoder design of Liu and Lu~\cite{liu2024tone}, we encode
 prosodic timing as a sequence of duration tokens. The rhythm encoder represents
 each valid syllable position using three interval types:
-\[
+\begin{equation}
 \mathcal{S}=\{\mathrm{SYL},\mathrm{V},\mathrm{CONS}\},
-\]
+\end{equation}
 where \(\mathrm{SYL}\) denotes the whole syllable interval, 
 \(\mathrm{V}\) denotes the vocalic interval,
 and \(\mathrm{CONS}\) denotes the consonant interval.
@@ -198,29 +202,30 @@ For each interval type, we compute three durational measurements. The first is
 the raw duration of the interval, \(\mathrm{Int}_{s,i}\). The second is the
 deviation of the current interval from the utterance-level mean duration of the
 same interval type:
-\[
+\begin{equation}
 \mathrm{Devi\mu}_{s,i}
 =
 \mathrm{Int}_{s,i}
 -
 \mu_{Int_{s,i}}
-\]
+\end{equation}
 The third is the local durational difference between consecutive intervals,
 defined as
-\[
+\begin{equation}
 \mu\mathrm{Diff}_{s,i} =
 \frac{\mathrm{Int}_{s,i} - \mathrm{Int}_{s,i+1}}
 {(\mathrm{Int}_{s,i} + \mathrm{Int}_{s,i+1})/2}
-\]
+\end{equation}
 At the \(n\)-th interval, \(\mu\mathrm{Diff}_{s,n}\) is replaced by
 \(\mathrm{nPVI}\text{-}\mathrm{Int}\), i.e., the normalized pairwise
 variability index for a specific type of speech interval, which measures
 the speech rhythm of an utterance:
-\[
+\begin{equation}
+\begin{aligned}
 \mu\mathrm{Diff}_{s,n}
-=
-\mathrm{nPVI}\text{-}\mathrm{Int}
-=
+&=
+\mathrm{nPVI}\text{-}\mathrm{Int} \\
+&=
 \frac{
 \sum_{k=1}^{n-1}
 \left|
@@ -228,20 +233,21 @@ the speech rhythm of an utterance:
 {(\mathrm{Int}_{k}+\mathrm{Int}_{k+1})/2}
 \right|
 }{n-1}.
-\]
+\end{aligned}
+\end{equation}
 
 The resulting duration sequence is denoted as
-\[
+\begin{equation}
 D = [d_1, d_2, \ldots, d_n] \in \mathbb{R}^{9 \times n},
-\]
+\end{equation}
 where each duration token \(d_i \in \mathbb{R}^9\) contains nine features that capture durational variability.
 Each token is first linearly projected into a \(d_{model}\)-dimensional representation using a learnable projection weight
 \(W_d \in \mathbb{R}^{d_{model} \times 9}\).
 To preserve the temporal order of the sequence, sinusoidal positional encoding is then added to the projected duration embeddings, following the original Transformer~\cite{vaswani2017attention}.
 Finally, the input embedding of the rhythm encoder is defined as
-\[
+\begin{equation}
 e_i = LN\left(W_d \cdot d_i + p_i\right),
-\]
+\end{equation}
 where \(LN(\cdot)\) denotes layer normalization, and \(p_i \in \mathbb{R}^{d_{model}}\) is the positional encoding vector at position \(i\).
 
 \begin{figure*}[!t]
@@ -270,10 +276,10 @@ rhythm patterns. The resulting model is an audio-rhythm \crab{} network.
 
 Given an input waveform \(x\), a self-supervised speech encoder first extracts
 a frame-level acoustic representation \(S\):
-\[
+\begin{equation}
 S = f_{\mathrm{ssl}}(x), \qquad
 S \in \mathbb{R}^{F \times D_s}.
-\]
+\end{equation}
 Here, \(f_{\mathrm{ssl}}(\cdot)\) denotes the SSL speech encoder, \(F\) is the
 number of speech frames, and \(D_s\) is the speech feature dimension. In this
 report, the SSL encoder can be instantiated with wav2vec 2.0/XLS-R style
@@ -282,10 +288,10 @@ frame-level acoustic information from the waveform.
 
 In parallel, the duration sequence \(D\) produced by the prosody encoder is
 converted into a rhythm representation \(R\):
-\[
+\begin{equation}
 R = f_{\mathrm{rhythm}}(D), \qquad
 R \in \mathbb{R}^{L \times D_r}.
-\]
+\end{equation}
 Here, \(f_{\mathrm{rhythm}}(\cdot)\) denotes the rhythm encoder, \(L\) is the
 number of rhythm tokens, and \(D_r\) is the rhythm feature dimension. This branch
 summarizes syllable-level timing information, so it describes how speech units
@@ -293,20 +299,20 @@ are distributed over time rather than what words are spoken.
 
 Because the speech and rhythm representations have different feature dimensions,
 they are projected into a shared hidden space before fusion:
-\[
+\begin{equation}
 \tilde{S} = LN(W_s \cdot S), \qquad
 \tilde{R} = LN(W_r \cdot R).
-\]
+\end{equation}
 In this equation, \(W_s\) and \(W_r\) are modality-specific projection matrices,
 and \(LN(\cdot)\) denotes layer normalization. The projected sequences
 \(\tilde{S}\) and \(\tilde{R}\) therefore have compatible hidden dimensions,
 which allows the later cross-modal attention block to compare the two streams.
 
 After projection, each modality is encoded by its own bidirectional GRU:
-\[
+\begin{equation}
 H_s = \mathrm{BiGRU}_s(\tilde{S}), \qquad
 H_r = \mathrm{BiGRU}_r(\tilde{R}).
-\]
+\end{equation}
 The resulting representations satisfy
 \(H_s \in \mathbb{R}^{F \times 2h}\) and
 \(H_r \in \mathbb{R}^{L \times 2h}\), where \(h\) is the hidden size of one GRU
@@ -315,27 +321,27 @@ sequence before the two modalities interact.
 
 The cross-modal block then aligns the two streams through multi-head attention.
 The speech stream attends to the rhythm stream as follows:
-\[
+\begin{equation}
 A_s = \mathrm{MHA}(Q=H_s, K=H_r, V=H_r).
-\]
+\end{equation}
 In this attention operation, speech features are used as queries, while rhythm
 features are used as keys and values. The output \(A_s\) can be interpreted as
 rhythm-aware speech information.
 
 The reverse direction is computed in the same way, where rhythm features attend
 to the speech stream:
-\[
+\begin{equation}
 A_r = \mathrm{MHA}(Q=H_r, K=H_s, V=H_s).
-\]
+\end{equation}
 Here, rhythm features are used as queries, and speech features are used as keys
 and values. The output \(A_r\) can be interpreted as speech-aware rhythm
 information.
 
 The attention outputs are then added back to their original unimodal
 representations through residual connections:
-\[
+\begin{equation}
 Z_s = H_s + A_s, \qquad Z_r = H_r + A_r.
-\]
+\end{equation}
 The residual design keeps the original speech and rhythm information while
 injecting cross-modal context. As a result, \(Z_s\) is the speech representation
 after rhythm alignment, and \(Z_r\) is the rhythm representation after speech
@@ -343,19 +349,19 @@ alignment.
 
 Since the final prediction is made at the utterance level, attention pooling is
 used to summarize each aligned sequence into one fixed-length vector:
-\[
+\begin{equation}
 z_s = \mathrm{AttPool}(Z_s), \qquad
 z_r = \mathrm{AttPool}(Z_r).
-\]
+\end{equation}
 Here, \(z_s\) and \(z_r\) are utterance-level speech and rhythm vectors,
 respectively. Attention pooling allows the model to assign larger weights to
 frames or rhythm tokens that are more informative for spoof detection.
 
 The two utterance-level vectors are concatenated to form the final multimodal
 representation:
-\[
+\begin{equation}
 C = [z_s;z_r] \in \mathbb{R}^{4h}.
-\]
+\end{equation}
 The vector \(C\) contains information from both the acoustic stream and the
 rhythm stream. It is then passed through the classifier block, which consists of
 layer normalization, a fully connected layer, ReLU activation, dropout, and a
@@ -365,29 +371,37 @@ classes.
 We also adapt Multi Layer Contrastive Supervision (MLCS) from the original
 \crab{} model to the ADD setting. Each green-highlighted module in
 Figure~\ref{fig:proposed_model_architecture} is connected to a Contrastive
-Supervision Leg (CSL), implemented as an FC-ReLU-FC projection head. For the
+Supervision Leg (CSL). For the
 \(i\)-th supervised layer, the CSL maps an intermediate representation
-\(m_i(x)\) into a contrastive embedding \(u_i\):
-\[
+\(m_i(x)\) into a contrastive representation \(u_i\):
+\begin{equation}
 u_i = g_i(m_i(x)).
-\]
+\end{equation}
 In this equation, \(g_i(\cdot)\) is the projection head of the \(i\)-th CSL\@.
-The MPCL loss is then computed using the ADD label: samples with the same bona
-fide/spoof label are treated as positives, and samples with different labels are
-treated as negatives. Therefore, MLCS encourages modality-specific, aligned, and
-fused representations to become label-discriminative before the final classifier.
+For an anchor representation \(u_i\), other samples in the mini-batch with the
+same ADD label are treated as positive samples; that is, bona fide samples are
+positives for a bona fide anchor, and spoofed samples are positives for a spoofed
+anchor. Samples with the opposite bona fide/spoof label are treated as negative
+samples. Following the MPCL formulation in Equations~\eqref{eq:mpcl_similarity}
+and~\eqref{eq:mpcl_target}, the similarity distribution is computed over all
+candidate samples, while the target distribution assigns probability mass only
+to the positive samples. Therefore, MLCS encourages modality-specific, aligned,
+and fused representations to become label-discriminative before the final
+classifier.
 
 The overall training objective combines the ordinary classification loss with
 the averaged contrastive loss from all selected CSLs:
-\[
+\begin{equation}
+\begin{aligned}
 \mathcal{L}_{\mathrm{add}}
-=
+&=
 \mathcal{L}_{\mathrm{CE}}(o,y)
 +
 \alpha \frac{1}{|\Omega|}
 \sum_{i \in \Omega}
 \mathcal{L}_{\mathrm{MPCL}}(u_i,y).
-\]
+\end{aligned}
+\end{equation}
 Here, \(o\) denotes the classifier logits, \(y\) is the bona fide/spoof label,
 \(\Omega\) is the set of layers with CSLs, and \(\alpha\) controls the strength
 of contrastive supervision. During inference, the CSL branches are removed, and
@@ -436,13 +450,15 @@ without any data augmentation. The number of training epochs is set to 20, the b
 and gradient accumulation is performed over 8 steps.
 
 
+
 \section{RESULTS}
 We first reproduce the SER setting of the \crab{} model on IEMOCAP~\cite{busso2008iemocap} and MSP-Podcast 2.0~\cite{busso2025msppodcast}.
 Table~\ref{tab:ser_results} presents a comparative evaluation of all baseline systems and the proposed \crab{} model.
 The bold values indicate the best performance within each group,
  underlined values denote the second-best results,
   and green highlighting is used to emphasize the proposed model or components introduced by our approach.
-\begin{table}[t]
+
+\begin{table}[h]
     \centering
     \caption{Comparison of SER performance on IEMOCAP and MSP-Podcast 2.0.}
     \label{tab:ser_results}
@@ -465,40 +481,39 @@ The bold values indicate the best performance within each group,
     \end{tabular}
     }
 \end{table}
-
 \begin{table}[t]
     \centering
     \caption{Comparison of audio deepfake detection performance on ASVspoof5~\cite{wang2025asvspoof5designcollection}.}
     \label{tab:deepfake_result}
     \resizebox{\columnwidth}{!}{%
-    \begin{tabular}{@{}llccccc@{}}
+    \begin{tabular}{@{}llcccc@{}}
         \toprule
-        \multirow{2}{*}{Model} & \multirow{2}{*}{Modality} & \multirow{2}{*}{Encoder} & \multirow{2}{*}{MPCL} & \multicolumn{3}{c}{ASVspoof5} \\
-        \cmidrule(l){5-7}
-        & & & & EER(\%) & min-DCF  & act-DCF\\
+        \multirow{2}{*}{Model} & \multirow{2}{*}{Modality} & \multirow{2}{*}{Encoder} & \multirow{2}{*}{MPCL} & \multicolumn{2}{c}{ASVspoof5} \\
+        \cmidrule(l){5-6}
+        & & & & EER(\%) & min-DCF\\
         \midrule
-        AASIST~\cite{jung2021aasist} & Audio & RawNet-2 & -- & \underline{6.08} & 0.1645 & -- \\
-        Nes2Net~\cite{liu2025nes2net} & Audio & -- & -- & 6.13 & \underline{0.1568} & -- \\
-        ProSDD~\cite{mahapatra2026prosdd} & Audio+Prosody & -- & -- & 7.38 & -- & -- \\
+        AASIST~\cite{jung2021aasist} & Audio & RawNet-2 & -- & 6.08 & 0.1645 \\
+        Nes2Net~\cite{liu2025nes2net} & Audio & -- & -- & 6.13 & 0.1568 \\
+        ProSDD~\cite{mahapatra2026prosdd} & Audio+Prosody & -- & -- & 7.38 & -- \\
         \midrule
 
-        AudioRhythmModel & Audio & GRU & \(\times\) & 8.34 & 0.2394 & 0.2464 \\
-        AudioRhythmModel & Audio & GRU & \(\checkmark\) & -- & -- & -- \\
+        AudioRhythmModel & Audio & GRU & \(\times\) & 8.34 & 0.2394 \\
+        AudioRhythmModel & Audio & GRU & \(\checkmark\) & \underline{5.39} & \underline{0.156} \\
 
-        AudioRhythmModel & Audio & Transformer & \(\times\) & \textbf{4.81} & \textbf{0.1358} & \textbf{0.1425} \\
-        AudioRhythmModel & Audio & Transformer & \(\checkmark\) & 6.44 & 0.1792 & 0.1953 \\
+        AudioRhythmModel & Audio & Transformer & \(\times\) & \textbf{4.81} & \textbf{0.1358} \\
+        AudioRhythmModel & Audio & Transformer & \(\checkmark\) & 6.44 & 0.1792 \\
 
-        AudioRhythmModel & Audio+Rhythm & GRU & \(\times\) & 12.33 & 0.3364 & 0.4170 \\
-        AudioRhythmModel & Audio+Rhythm & GRU & \(\checkmark\) & -- & -- & -- \\
+        AudioRhythmModel & Audio+Rhythm & GRU & \(\times\) & 12.33 & 0.3364 \\
+        AudioRhythmModel & Audio+Rhythm & GRU & \(\checkmark\) & 7.56 & 0.1989 \\
 
-        AudioRhythmModel & Audio+Rhythm & Transformer & \(\times\) & 8.16 & 0.2148 & 0.2250 \\
-        AudioRhythmModel & Audio+Rhythm & Transformer & \(\checkmark\) & -- & -- & -- \\
+        AudioRhythmModel & Audio+Rhythm & Transformer & \(\times\) & 8.16 & 0.2148 \\
+        AudioRhythmModel & Audio+Rhythm & Transformer & \(\checkmark\) & 5.66 & 0.1641 \\
 
-        AudioTextModel & Audio+Text & GRU & \(\times\) & 7.03 & 0.2012 & 0.20269 \\
-        AudioTextModel & Audio+Text & GRU & \(\checkmark\) & 7.26 & 0.2096 & 1.0000 \\
+        AudioTextModel & Audio+Text & GRU & \(\times\) & 7.03 & 0.2012 \\
+        AudioTextModel & Audio+Text & GRU & \(\checkmark\) & 7.26 & 0.2096 \\
 
-        AudioTextModel & Audio+Text & Transformer & \(\times\) & 6.17 & 0.1774 & 0.1819 \\
-        AudioTextModel & Audio+Text & Transformer & \(\checkmark\) & -- & -- & -- \\
+        AudioTextModel & Audio+Text & Transformer & \(\times\) & 6.17 & 0.1774 \\
+        AudioTextModel & Audio+Text & Transformer & \(\checkmark\) & 6.94 & 0.3559 \\
         \bottomrule
     \end{tabular}
     }
@@ -506,22 +521,28 @@ The bold values indicate the best performance within each group,
 
 Table~\ref{tab:ser_results} shows that the re-implemented \crab{} model obtains
 competitive performance on IEMOCAP, with a WAR of 0.7365 and a UAR of 0.7429.
-Although it does not exactly match the reported \crab{} score, the result
-suggests that the main SER architecture is reasonably reproduced and can be used
-as the basis for the ADD adaptation.
+Although the reproduction does not exactly match the reported \crab{} results,
+it shows a comparable trend and confirms that the main architecture is usable as
+the basis for ADD adaptation.
 
-Table~\ref{tab:deepfake_result} shows that the audio-only Transformer without
-MPCL achieves the best ADD performance, with an EER of 4.81\%, a min-DCF of
-0.1358, and an act-DCF of 0.1425. Adding rhythm features does not improve the
-result in the current experiments, and MPCL is also not consistently helpful.
-This does not necessarily mean that rhythm information is useless. A more likely
-interpretation is that the present multimodal pipeline may still be affected by
-implementation or preprocessing issues, such as alignment errors, syllable
-boundary noise, padding and masking problems, modality imbalance, or loss
-weighting. The pure-audio model has a simpler data path and is therefore less
-exposed to these possible sources of error. For this reason, the ADD results
-should be viewed as preliminary ablations that identify where the audio-rhythm
-model needs further debugging and refinement.
+Table~\ref{tab:deepfake_result} reports ADD performance using EER and min-DCF.
+The audio-only Transformer without MPCL gives the lowest numerical result, with
+an EER of 4.81\% and a min-DCF of 0.1358. However, this result is unexpectedly
+strong and should be interpreted cautiously, since the current implementation may
+still contain coding or evaluation issues. Possible sources include data split
+handling, label mapping, score aggregation, evaluation-script usage,
+checkpoint loading, and padding or masking behavior. The audio-only GRU improves
+from 8.34\% to 5.39\% EER with MPCL, but this trend should also be verified
+after the code path is checked.
+
+The multimodal results are weaker than the audio-only Transformer result, but
+this gap should not be taken as evidence that rhythm information is ineffective.
+The rhythm branch has a weaker front end because it uses a Transformer encoder
+trained from scratch, while the audio branch uses a pretrained SSL checkpoint.
+Moreover, the rhythm pipeline depends on forced alignment, syllable boundaries,
+padding, masking, normalization, and fusion, so small implementation errors can
+easily affect the result. Therefore, the current ADD table should be treated as a
+preliminary ablation for debugging rather than a final comparison.
 
 \section{CONCLUSION}
 This report adapted the \crab{} framework from speech emotion recognition to
@@ -531,13 +552,12 @@ adapted model combines SSL speech representations, syllable-level duration
 features, cross-modal attention, attention pooling, and Multi Layer Contrastive
 Supervision to study audio-rhythm fusion for ADD.
 
-The ablation results show that SSL-based audio representations remain a strong
-baseline, with the audio-only Transformer setting achieving the best ADD
-performance in this report. Adding rhythm features or MPCL does not consistently
-improve performance, suggesting that rhythm information is sensitive to
-alignment quality, feature design, and fusion strategy. Future work should
-improve rhythm feature reliability and explore more robust multimodal fusion
-before the audio-rhythm model can be considered fully optimized.
+The ablation results should be interpreted as preliminary because the unusually
+low audio-only Transformer EER may indicate coding or evaluation issues. Before
+drawing conclusions about rhythm fusion or MPCL, future work should first verify
+the data split, label mapping, scoring pipeline, checkpoint loading, masking, and
+multimodal code path. After the implementation is verified, stronger or
+pretrained rhythm encoders can be evaluated more fairly.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
