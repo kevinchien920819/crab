@@ -149,7 +149,8 @@ class RhythmEncoder(nn.Module):
         if not self.sources:
             raise ValueError('rhythm_sources must contain at least one interval source.')
 
-        self.rhythm_embedding = RhythmEmbedding(cfg.d_model, cfg.dropout)
+        rhythm_input_dim = len(self.sources) * len(self.FEATURE_SUFFIXES)
+        self.rhythm_embedding = RhythmEmbedding(rhythm_input_dim, cfg.d_model, cfg.dropout)
         if cfg.n_rhythm_encoder_layers < 0:
             raise ValueError('n_rhythm_encoder_layers must be non-negative.')
 

@@ -450,7 +450,7 @@ class Controller:
                 else:
                     true.append(b.emotion_labels.detach().cpu())
 
-                score = torch.softmax(logits, dim=-1)[..., 1]
+                score = torch.softmax(logits, dim=-1)[..., 0]
                 pred.append(score.detach().cpu())
 
         if backward and last_batch_idx >= 0 and (last_batch_idx + 1) % self.cfg.solver.iters_to_accumulate != 0:
