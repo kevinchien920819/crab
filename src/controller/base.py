@@ -33,8 +33,16 @@ class Controller:
         self.dataloaders    = dataloaders
         self.trial_file     = trial_file
         self.dataset_name   = dataset_name
-        self.warmup_epochs  = int(cfg.solver.warmup_ratio * cfg.solver.max_epochs)
         self.device         = cfg.general.device
+        self.steps_per_epoch = (
+            self._infer_steps_per_epoch(dataloaders[0])
+            if len(dataloaders) > 1 and dataloaders[0] is not None
+            else None
+        )
+        self.max_steps = self._resolve_max_steps(cfg)
+        self.freeze_steps = self._resolve_freeze_steps(cfg)
+        self.warmup_steps = int(cfg.solver.warmup_ratio * self.max_steps)
+
         self.optimizer  = self._setup_optimizer(cfg)
         self.scheduler  = self._setup_scheduler(cfg)
         self.criterions = self._setup_criterions(cfg)
@@ -45,13 +53,52 @@ class Controller:
             raise ValueError(f'Unsupported amp_dtype: {self.amp_dtype}')
         self.amp_enabled = self.amp_dtype != 'none'
 
-        self.current_epoch = 0
+        self.current_step = 0
+        self.completed_train_passes = 0
         self.best_score = 0
         self.iters = 0
 
     def run(self):
         """Define the controller execution interface for subclasses."""
         pass
+
+    def _infer_steps_per_epoch(self, dataloader) -> int:
+        """Return optimizer update steps in one full pass over the train dataloader."""
+        num_batches = len(dataloader)
+        if num_batches <= 0:
+            return 0
+
+        batches_per_update = max(1, int(self.cfg.solver.iters_to_accumulate))
+        return math.ceil(num_batches / batches_per_update)
+
+    def _resolve_max_steps(self, cfg: BaseConfig) -> int:
+        """Resolve max_steps, keeping max_epochs as a backward-compatible shorthand."""
+        configured_steps = getattr(cfg.solver, 'max_steps', None)
+        if configured_steps is not None:
+            max_steps = int(configured_steps)
+        elif self.steps_per_epoch:
+            max_steps = int(cfg.solver.max_epochs) * self.steps_per_epoch
+        else:
+            max_steps = int(cfg.solver.max_epochs)
+
+        cfg.solver.max_steps = max_steps
+
+        if max_steps <= 0:
+            raise ValueError(f'cfg.solver.max_steps must be positive, got {max_steps}')
+        return max_steps
+
+    def _resolve_freeze_steps(self, cfg: BaseConfig) -> int:
+        """Resolve freeze duration in optimizer update steps."""
+        configured_steps = getattr(cfg.solver, 'freeze_steps', None)
+        if configured_steps is not None:
+            freeze_steps = int(configured_steps)
+        elif self.steps_per_epoch:
+            freeze_steps = int(cfg.solver.freeze_epochs) * self.steps_per_epoch
+        else:
+            freeze_steps = int(cfg.solver.freeze_epochs)
+
+        cfg.solver.freeze_steps = max(0, freeze_steps)
+        return cfg.solver.freeze_steps
 
     def _setup_optimizer(self, cfg: BaseConfig) -> torch.optim.Optimizer:
         """Build optimizer parameter groups from the solver learning-rate config."""
@@ -108,10 +155,10 @@ class Controller:
 
     def _setup_scheduler(self, cfg: BaseConfig) -> torch.optim.lr_scheduler.LRScheduler:
         """Build the learning-rate scheduler requested by the solver config."""
-        def div(current_epoch: int) -> float:
+        def div(current_step: int) -> float:
             """Return a stepwise learning-rate multiplier for the div scheduler."""
             lr_val = self.cfg.solver.lr
-            # dict → 取 values 成 list；scalar → 包成 list
+            # dict -> values list; scalar -> one-item list
             if isinstance(lr_val, dict):
                 lr_list = list(lr_val.values())
             elif isinstance(lr_val, list):
@@ -119,28 +166,27 @@ class Controller:
             else:
                 lr_list = [lr_val]
             num_lr_segments = len(lr_list)
-            segment_length = self.cfg.solver.max_epochs // num_lr_segments
-            segment_index = min(current_epoch // segment_length, num_lr_segments - 1)
+            segment_length = max(1, self.max_steps // num_lr_segments)
+            segment_index = min(current_step // segment_length, num_lr_segments - 1)
             return float(lr_list[segment_index]) / float(lr_list[0])
 
-        def cosine_warmup(epoch: int) -> float:
-            """Return the warmup and cosine-decay learning-rate multiplier for an epoch."""
-            total_epochs = self.cfg.solver.max_epochs
+        def cosine_warmup(current_step: int) -> float:
+            """Return the warmup and cosine-decay learning-rate multiplier for a step."""
             min_lr_ratio = self.cfg.solver.min_lr_ratio
 
-            if epoch < self.warmup_epochs:
-                return float(epoch) / float(max(1, self.warmup_epochs))
+            if current_step < self.warmup_steps:
+                return float(current_step) / float(max(1, self.warmup_steps))
 
-            progress = (epoch - self.warmup_epochs) / float(max(1, total_epochs - self.warmup_epochs))
+            progress = (current_step - self.warmup_steps) / float(max(1, self.max_steps - self.warmup_steps))
             return min_lr_ratio + (1.0 - min_lr_ratio) * 0.5 * (1 + math.cos(math.pi * progress))
 
         def cosine_eta_min_lambda(base_lr: float, eta_min: float):
             """
             Returns a lambda function that computes the learning rate multiplier for CosineAnnealingLR with a given eta_min.
             """
-            def lr_lambda(epoch: int) -> float:
+            def lr_lambda(current_step: int) -> float:
                 """Return the cosine learning-rate multiplier for one parameter group."""
-                progress = min(epoch, self.cfg.solver.max_epochs) / float(max(1, self.cfg.solver.max_epochs))
+                progress = min(current_step, self.max_steps) / float(max(1, self.max_steps))
                 lr = eta_min + (base_lr - eta_min) * 0.5 * (1 + math.cos(math.pi * progress))
                 return lr / base_lr
             return lr_lambda
@@ -175,7 +221,7 @@ class Controller:
                 eta_min = float(min_lr_cfg) if min_lr_cfg is not None else 0.0
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                     self.optimizer,
-                    T_max=self.cfg.solver.max_epochs,
+                    T_max=self.max_steps,
                     eta_min=eta_min
                 )
         else:
@@ -368,10 +414,13 @@ class Controller:
         else:
             self.optimizer.step()
         self.optimizer.zero_grad()
+        self.current_step += 1
+        self.iters = self.current_step
+        self.scheduler.step()
 
     def do_epoch(self, dataloader, scaler: torch.amp.GradScaler = None, backward: bool = True):
 
-        """Run one train or evaluation epoch and collect labels, scores, and losses."""
+        """Run one dataloader pass and collect labels, scores, and losses."""
         true = []
         pred = []
         fname_list = []
@@ -385,12 +434,15 @@ class Controller:
         epoch_loss = 0.0
         epoch_loss_list = [0.0 for _ in self.criterions]
         processed_batches = 0
-        last_batch_idx = -1
+        accumulated_batches = 0
+        iters_to_accumulate = max(1, int(self.cfg.solver.iters_to_accumulate))
 
         bar = tqdm(dataloader, total=len(dataloader), unit='batch', desc='Training' if backward else 'Testing')
         amp_dtype = torch.float16 if self.amp_dtype == 'fp16' else torch.bfloat16
         for b_idx, b in enumerate(bar):
-            last_batch_idx = b_idx
+            if backward and self.current_step >= self.max_steps:
+                break
+
             b: Batch
             b.to(self.device, non_blocking=self.cfg.dataloader.non_blocking_transfer)
 
@@ -417,19 +469,23 @@ class Controller:
                 epoch_loss_list[i] += batch_loss_list[i]
             processed_batches += 1
 
+            stop_after_batch = False
             if backward:
-                scaled_loss = batch_loss / self.cfg.solver.iters_to_accumulate
+                scaled_loss = batch_loss / iters_to_accumulate
                 if scaler is not None:
                     scaler.scale(scaled_loss).backward()
                 else:
                     scaled_loss.backward()
 
-                if (b_idx + 1) % self.cfg.solver.iters_to_accumulate == 0:
+                accumulated_batches += 1
+                if accumulated_batches >= iters_to_accumulate:
                     self.update_model(scaler)
+                    accumulated_batches = 0
+                    stop_after_batch = self.current_step >= self.max_steps
 
             epoch_loss += batch_loss.item()
 
-            bar.set_postfix({'batch_loss': batch_loss.item()})
+            bar.set_postfix({'batch_loss': batch_loss.item(), 'step': self.current_step})
             # todo: remove mask it is useless in deepfake detection
             # if self.dataset_name in ['ASVspoof2019_LA', 'ASVspoof2021_LA', 'ASVspoof2021_DF', 'ASVspoof5']:
             #     mask = (b.label != -100)
@@ -453,8 +509,14 @@ class Controller:
                 score = torch.softmax(logits, dim=-1)[..., 0]
                 pred.append(score.detach().cpu())
 
-        if backward and last_batch_idx >= 0 and (last_batch_idx + 1) % self.cfg.solver.iters_to_accumulate != 0:
+            if stop_after_batch:
+                break
+
+        if backward and accumulated_batches > 0 and self.current_step < self.max_steps:
             self.update_model(scaler)
+
+        if processed_batches == 0:
+            return true, pred, float('nan'), [float('nan') for _ in epoch_loss_list]
 
         epoch_loss = epoch_loss / processed_batches
         epoch_loss_list = [l / processed_batches for l in epoch_loss_list]
