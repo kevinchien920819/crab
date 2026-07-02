@@ -62,6 +62,10 @@ class Controller:
         """Define the controller execution interface for subclasses."""
         pass
 
+    def _log_train_step(self, train_loss: float, train_loss_list: list[float]) -> None:
+        """Allow trainers to stream per-step train metrics during do_epoch."""
+        pass
+
     def _infer_steps_per_epoch(self, dataloader) -> int:
         """Return optimizer update steps in one full pass over the train dataloader."""
         num_batches = len(dataloader)
@@ -435,6 +439,8 @@ class Controller:
         epoch_loss_list = [0.0 for _ in self.criterions]
         processed_batches = 0
         accumulated_batches = 0
+        accumulated_loss = 0.0
+        accumulated_loss_list = [0.0 for _ in self.criterions]
         iters_to_accumulate = max(1, int(self.cfg.solver.iters_to_accumulate))
 
         bar = tqdm(dataloader, total=len(dataloader), unit='batch', desc='Training' if backward else 'Testing')
@@ -463,6 +469,9 @@ class Controller:
                 self.logger.warning('[Trainer] Skip NaN/Inf batch at idx %d', b_idx)
                 if backward:
                     self.optimizer.zero_grad()
+                    accumulated_batches = 0
+                    accumulated_loss = 0.0
+                    accumulated_loss_list = [0.0 for _ in self.criterions]
                 continue
 
             for i in range(len(epoch_loss_list)):
@@ -471,6 +480,9 @@ class Controller:
 
             stop_after_batch = False
             if backward:
+                accumulated_loss += batch_loss.item()
+                for i in range(len(accumulated_loss_list)):
+                    accumulated_loss_list[i] += batch_loss_list[i]
                 scaled_loss = batch_loss / iters_to_accumulate
                 if scaler is not None:
                     scaler.scale(scaled_loss).backward()
@@ -480,7 +492,13 @@ class Controller:
                 accumulated_batches += 1
                 if accumulated_batches >= iters_to_accumulate:
                     self.update_model(scaler)
+                    self._log_train_step(
+                        accumulated_loss / accumulated_batches,
+                        [loss / accumulated_batches for loss in accumulated_loss_list],
+                    )
                     accumulated_batches = 0
+                    accumulated_loss = 0.0
+                    accumulated_loss_list = [0.0 for _ in self.criterions]
                     stop_after_batch = self.current_step >= self.max_steps
 
             epoch_loss += batch_loss.item()
@@ -514,6 +532,10 @@ class Controller:
 
         if backward and accumulated_batches > 0 and self.current_step < self.max_steps:
             self.update_model(scaler)
+            self._log_train_step(
+                accumulated_loss / accumulated_batches,
+                [loss / accumulated_batches for loss in accumulated_loss_list],
+            )
 
         if processed_batches == 0:
             return true, pred, float('nan'), [float('nan') for _ in epoch_loss_list]

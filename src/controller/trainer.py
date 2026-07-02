@@ -52,11 +52,9 @@ class Trainer(Controller):
         train_dataloader = self.dataloaders[0]
         val_dataloader = self.dataloaders[1]
 
-        self.logger.info(
-            f'[Trainer] max_steps: {self.max_steps}, '
-            f'[Trainer] steps_per_train_epoch: {self.steps_per_epoch}, '
-            f'[Trainer] iters_t_accuomulate: {self.cfg.solver.iters_to_accumulate}'
-        )
+        self.logger.info(f'[Trainer] max_steps: {self.max_steps}')
+        self.logger.info(f'[Trainer] steps_per_epoch: {self.steps_per_epoch}')
+        self.logger.info(f'[Trainer] iters_to_accumulate: {self.cfg.solver.iters_to_accumulate}')
         if self.cfg.wandb.enable and self.wandb_run is not None:
             self.wandb_run.config.update(
                 {
@@ -136,6 +134,18 @@ class Trainer(Controller):
                     self.logger.info(f'Peak reserved VRAM: {reserved_peak:.2f} GB')
         finally:
             bar.close()
+
+    def _log_train_step(self, train_loss: float, train_loss_list: list[float]) -> None:
+        """Stream optimizer-step train loss to WandB."""
+        if not self.cfg.wandb.enable or self.wandb_run is None:
+            return
+
+        wandb_log = {
+            'train_loss': train_loss,
+            'lr': self.scheduler.get_last_lr()[0],
+        }
+        wandb_log.update({f'train_loss_components_{i}': train_loss_list[i] for i in range(len(train_loss_list))})
+        self.wandb_run.log(wandb_log, step=self.current_step)
 
     def _cuda_memory_device(self):
         """Resolve the CUDA device used for memory statistics, if available."""
