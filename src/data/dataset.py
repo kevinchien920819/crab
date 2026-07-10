@@ -804,7 +804,7 @@ class DeepfakeDataset(Dataset):
                         filename = line[1]
                         label_str = line[5]
 
-                    label = 0 if label_str == 'bonafide' else 1
+                    label = 1 if label_str == 'bonafide' else 0
 
                     flac_path = flac_dir / f'{filename}.flac'
 

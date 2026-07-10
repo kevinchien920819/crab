@@ -17,7 +17,7 @@ class DatasetItem:
     codec_seed: str
     attack_tag: str
     attack_label: str
-    label: int
+    label: int  # 0: spoof, 1: bonafide
     
     # content of data sentence EX: "Hello world"
     content_sentence: str

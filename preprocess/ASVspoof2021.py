@@ -44,8 +44,8 @@ TRACK_CONFIG = {
 }
 
 KEY_TO_LABEL = {
-    "bonafide": 0,
-    "spoof": 1,
+    "spoof": 0,
+    "bonafide": 1,
 }
 
 

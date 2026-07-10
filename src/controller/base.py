@@ -398,11 +398,15 @@ class Controller:
     def _asvspoof_cm_score(self, logits: Tensor) -> Tensor:
         """Return one bonafide-oriented CM score per sample for ASVspoof score files."""
         if logits.dim() == 3:
-            # Preserve the previous sequence-output behavior: first step, class 0.
-            return logits[:, 0, 0]
+            if logits.size(-1) != 2:
+                raise ValueError(f'Expected two deepfake classes, got logits shape {tuple(logits.shape)}')
+            # Preserve the previous sequence-output behavior by scoring the first step.
+            return logits[:, 0, 1] - logits[:, 0, 0]
         if logits.dim() == 2:
-            # Deepfake labels use 0=bonafide, 1=spoof; CM scoring expects higher=bonafide.
-            return logits[:, 0]
+            if logits.size(-1) != 2:
+                raise ValueError(f'Expected two deepfake classes, got logits shape {tuple(logits.shape)}')
+            # Deepfake labels use 0=spoof, 1=bonafide; higher CM scores support bonafide.
+            return logits[:, 1] - logits[:, 0]
         if logits.dim() == 1:
             return logits
         raise ValueError(f'Unsupported logits shape for ASVspoof scoring: {tuple(logits.shape)}')
@@ -524,7 +528,8 @@ class Controller:
                 else:
                     true.append(b.emotion_labels.detach().cpu())
 
-                score = torch.softmax(logits, dim=-1)[..., 0]
+                # Use the same label-1/bonafide score for EER and ASVspoof score files.
+                score = self._asvspoof_cm_score(logits)
                 pred.append(score.detach().cpu())
 
             if stop_after_batch:

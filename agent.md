@@ -29,6 +29,7 @@
 - Audio is normalized and resampled to 16 kHz in `__getitem__`.
 - `Batch.to()` moves tensor fields only; non-tensor metadata stays on CPU.
 - Preserve label names: `emotion_labels`, `sentiment_labels`, and `deepfake_labels`.
+- Preserve the deepfake class contract everywhere: `0=spoof`, `1=bonafide`; ASVspoof CM scores must be higher for bonafide.
 - Current `DeepfakeCrabModel` calls the text model, so missing `tokens/text_mask` is a known risk.
 
 ## Model Contracts

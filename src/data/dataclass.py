@@ -24,7 +24,7 @@ class Sample:
     wavform: Optional[torch.Tensor] = None
 
     # for deepfake detection
-    deepfake_label: Optional[int] = None  # 0: bonafide, 1: spoof
+    deepfake_label: Optional[int] = None  # 0: spoof, 1: bonafide
     utt_data : Optional[Duration] = None
     word_data: Optional[Duration] = None
     syllable_data: Optional[Duration] = None
@@ -110,7 +110,7 @@ class ASVspoof5Cache:
     codec_seed: str
     attack_tag: str
     attack_label: str
-    label: int
+    label: int  # 0: spoof, 1: bonafide
 
     content_sentence: str
     starttime_sentence: float

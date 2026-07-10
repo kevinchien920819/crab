@@ -37,7 +37,7 @@ class Trainer(Controller):
         if dataset_name in ['MELD', 'IEMOCAP', 'MSP_Podcast']:
             self.best_score = 0.0 # for UAR
         else:
-            self.best_score = 100.0 # for EER
+            self.best_score = float('inf') # lower EER is better
         self.wandb_run = wandb_run
         self.wandb_log = {}
 
