@@ -401,12 +401,12 @@ class Controller:
             if logits.size(-1) != 2:
                 raise ValueError(f'Expected two deepfake classes, got logits shape {tuple(logits.shape)}')
             # Preserve the previous sequence-output behavior by scoring the first step.
-            return logits[:, 0, 1] - logits[:, 0, 0]
+            return logits[:, 0, 1]
         if logits.dim() == 2:
             if logits.size(-1) != 2:
                 raise ValueError(f'Expected two deepfake classes, got logits shape {tuple(logits.shape)}')
             # Deepfake labels use 0=spoof, 1=bonafide; higher CM scores support bonafide.
-            return logits[:, 1] - logits[:, 0]
+            return logits[:, 1]
         if logits.dim() == 1:
             return logits
         raise ValueError(f'Unsupported logits shape for ASVspoof scoring: {tuple(logits.shape)}')
