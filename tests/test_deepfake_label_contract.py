@@ -31,12 +31,12 @@ class DeepfakeLabelContractTest(unittest.TestCase):
 
         self.assertEqual(compute_eer_from_labels(labels, inverted_scores), 1.0)
 
-    def test_cm_score_is_bonafide_minus_spoof_logit(self):
+    def test_cm_score_is_bonafide_logit(self):
         logits = torch.tensor([[4.0, -1.0], [-2.0, 3.0]])
 
         score = Controller._asvspoof_cm_score(None, logits)
 
-        torch.testing.assert_close(score, torch.tensor([-5.0, 5.0]))
+        torch.testing.assert_close(score, torch.tensor([-1.0, 3.0]))
 
     def test_worse_eer_does_not_replace_best_checkpoint(self):
         trainer = Trainer.__new__(Trainer)
