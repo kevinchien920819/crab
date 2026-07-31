@@ -33,8 +33,8 @@ DEFAULT_OUTPUT_ROOT = Path("dataset/ASVspoof5/ASVspoof5_syllabified_textgrid")
 DEFAULT_DATA_ROOT = Path("dataset/ASVspoof5")
 
 KEY_TO_LABEL = {
-    "bonafide": 0,
-    "spoof": 1,
+    "spoof": 0,
+    "bonafide": 1,
 }
 
 PROTOCOL_COLUMNS = (

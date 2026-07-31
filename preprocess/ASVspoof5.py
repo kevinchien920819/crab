@@ -22,8 +22,8 @@ TranscriptData: TypeAlias = dict[str, str | float | list[float]]
 SPLITS: tuple[SplitName, ...] = ("train", "dev", "eval")
 
 KEY_TO_LABEL = {
-    "bonafide": 0,
-    "spoof": 1,
+    "spoof": 0,
+    "bonafide": 1,
 }
 
 # Protocol columns based on ASVspoof5 protocol documentation

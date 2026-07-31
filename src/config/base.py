@@ -47,8 +47,12 @@ class SolverConfig:
     min_lr: dict | float | None = None
     max_grad_norm: float = 1.0
     
+    # max_steps/freeze_steps are optimizer update steps. When max_steps is not
+    # set, Trainer converts max_epochs by using the train dataloader length.
     max_epochs: int = 100
+    max_steps: int | None = None
     freeze_epochs: int = 0
+    freeze_steps: int | None = None
     lr: dict = field(default_factory=lambda: {
         # 'ssl_model': 1e-6,
         # 'text_model': 1e-6,

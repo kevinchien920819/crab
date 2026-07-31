@@ -32,7 +32,7 @@ def compute_eer(target_scores, nontarget_scores):
 
 
 def compute_eer_from_labels(true, pred):
-    """Compute EER after splitting scores by binary ground-truth labels."""
+    """Compute EER for 0=spoof/1=bonafide labels and bonafide-oriented scores."""
     true = np.asarray(true).reshape(-1)
     pred = np.asarray(pred).reshape(-1)
 
@@ -40,12 +40,15 @@ def compute_eer_from_labels(true, pred):
         raise ValueError('empty labels or predictions')
     if true.shape != pred.shape:
         raise ValueError('labels and predictions must have the same shape')
-    if np.unique(true).size < 2:
+    unique_labels = np.unique(true)
+    if unique_labels.size < 2:
         raise ValueError('labels contain only one class')
+    if not np.isin(unique_labels, [0, 1]).all():
+        raise ValueError(f'labels must use 0=spoof and 1=bonafide, got {unique_labels.tolist()}')
 
-    target_scores = pred[true == 1]
-    nontarget_scores = pred[true == 0]
-    eer, _ = compute_eer(target_scores, nontarget_scores)
+    bonafide_scores = pred[true == 1]
+    spoof_scores = pred[true == 0]
+    eer, _ = compute_eer(bonafide_scores, spoof_scores)
     return eer
 
 

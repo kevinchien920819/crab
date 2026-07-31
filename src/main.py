@@ -125,6 +125,7 @@ def pipeline(logger: logging.Logger, cfg):
     wandb_run = None
     if cfg.wandb.enable:
         wandb_run = wandb.init(
+            entity=cfg.wandb.entity,
             project=cfg.wandb.project,
             name=cfg.model.name,
             tags=[cfg.model.tag],

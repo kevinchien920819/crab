@@ -28,7 +28,7 @@ DeepfakeModel Train Finished!
 - d_model: {cfg.model.d_model}
 - n_transformer_encoder_layers: {cfg.model.n_transformer_encoder_layers}
 - n_rhythm_encoder_layers: {cfg.model.n_rhythm_encoder_layers}
-- epochs: {cfg.solver.max_epochs}
+- max_steps: {cfg.solver.max_steps}
 - eval_err: {err:.6f}'''
 
         try:
