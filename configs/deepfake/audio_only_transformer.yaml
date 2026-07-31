@@ -1,6 +1,6 @@
 general:
   device: cuda
-  device_id: '2'
+  device_id: '0'
   work_dir: default
   seed: 39
   deterministic: true
@@ -20,7 +20,7 @@ general:
 
 model:
   name: DeepfakeAudioRhythmTransformerModel
-  tag: v2
+  tag: v8
   description: 'Baseline for ADD task using Audio only'
   ssl_model_str: WAV2VEC2_XLSR_300M
   use_audio: true
@@ -47,15 +47,19 @@ solver:
       name: CrossEntropyLoss
       label_smoothing: 0.1
       total_weight: 1.0
+    mpcl_loss:
+      name: mpcl_loss
+      temperature: 0.1
+      total_weight: 1.0
 
 datasets:
   train_datasets:
   - name: ASVspoof5
-    dir: /data/m314832018/Lab8/crab/dataset
+    dir: /home/icebird/01_proj/crab/dataset
     use_duration: true
   test_datasets:
   - name: ASVspoof5
-    dir: /data/m314832018/Lab8/crab/dataset
+    dir: /home/icebird/01_proj/crab/dataset
     use_duration: true
 
 dataloader:

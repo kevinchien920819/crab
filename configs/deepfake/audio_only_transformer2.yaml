@@ -1,6 +1,6 @@
 general:
   device: cuda
-  device_id: '0'
+  device_id: '2'
   work_dir: default
   seed: 39
   deterministic: true
@@ -19,8 +19,8 @@ general:
   produce_evaluation_file: true
 
 model:
-  name: DeepfakeAudioRhythmGRUModel
-  tag: v7
+  name: DeepfakeAudioRhythmTransformerModel
+  tag: v2
   description: 'Baseline for ADD task using Audio only'
   ssl_model_str: WAV2VEC2_XLSR_300M
   use_audio: true
@@ -30,6 +30,7 @@ model:
   d_model: 256
   d_contrastive: 128
   n_heads: 4
+  n_transformer_encoder_layers: 1
   dropout: 0.3
 
 solver:
@@ -45,11 +46,6 @@ solver:
     ce_loss:
       name: CrossEntropyLoss
       label_smoothing: 0.1
-      total_weight: 1.0
-
-    mpcl_loss:
-      name: mpcl_loss
-      temperature: 0.1
       total_weight: 1.0
 
 datasets:
