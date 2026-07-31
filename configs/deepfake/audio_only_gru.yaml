@@ -20,9 +20,9 @@ general:
 
 model:
   name: DeepfakeAudioRhythmGRUModel
-  tag: v1
+  tag: v7
   description: 'Baseline for ADD task using Audio only'
-  ssl_model_str: WAVLM_LARGE
+  ssl_model_str: WAV2VEC2_XLSR_300M
   use_audio: true
   use_rhythm: false
   use_text: false
@@ -45,6 +45,11 @@ solver:
     ce_loss:
       name: CrossEntropyLoss
       label_smoothing: 0.1
+      total_weight: 1.0
+
+    mpcl_loss:
+      name: mpcl_loss
+      temperature: 0.1
       total_weight: 1.0
 
 datasets:
